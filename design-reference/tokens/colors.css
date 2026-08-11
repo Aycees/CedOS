@@ -1,0 +1,42 @@
+:root{
+  /* paper (default/light) theme surfaces */
+  --bg: #F0EADE;
+  --sidebar: #E8E0D1;
+  --card: #FBF8F2;
+  --border: rgba(38,35,30,.13);
+  --border-strong: rgba(38,35,30,.3);
+  --text: #262320;
+  --muted: #918876;
+  --dot: rgba(38,35,30,.15);
+  --checkbox: rgba(38,35,30,.3);
+  --on-dark: #FBF8F2;
+  --overlay: rgba(38,35,30,.28);
+  --shadow-modal: 0 24px 60px rgba(38,35,30,.22);
+  --hairline: rgba(38,35,30,.16);
+
+  /* accents — pick one as the active brand accent (default: terracotta) */
+  --accent-blue: #4A6FA5;
+  --accent-green: #4A8464;
+  --accent-terracotta: #A8664A;
+  --accent-violet: #7A5EA8;
+  --accent-red: #B2453A;
+  --accent-warmgray: #8C8371;
+  --accent-sky: #5E8AA8;
+  --accent-mauve: #A87A9E;
+  --accent-default: var(--accent-terracotta);
+}
+[data-theme="dark"]{
+  --bg: #232220;
+  --sidebar: #2A2926;
+  --card: #2F2E2B;
+  --border: rgba(255,255,255,.14);
+  --border-strong: rgba(255,255,255,.3);
+  --text: #F2EEE4;
+  --muted: #ADA895;
+  --dot: rgba(255,255,255,.10);
+  --checkbox: rgba(255,255,255,.38);
+  --on-dark: #232220;
+  --overlay: rgba(0,0,0,.5);
+  --shadow-modal: 0 24px 60px rgba(0,0,0,.45);
+  --hairline: rgba(255,255,255,.14);
+}

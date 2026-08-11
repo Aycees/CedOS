@@ -1,0 +1,17 @@
+:root{
+  --radius-card: 12px;
+  --radius-modal: 14px;
+  --radius-control: 9px;
+  --radius-input: 8px;
+  --radius-pill: 20px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  --density-comfortable: 11px;
+  --density-compact: 7px;
+}

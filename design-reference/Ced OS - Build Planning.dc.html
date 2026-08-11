@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Newsreader:ital,opsz,wght@0,6..72,400..600;1,6..72,400..500&display=swap" rel="stylesheet">
+<style>
+doc-page:not(:defined){visibility:hidden}
+body{background:#DCD3C1}
+.docbody h1,.docbody h2,.docbody h3{font-family:'Newsreader',serif;color:#262320}
+.docbody h1{font-size:32px;font-weight:500;margin:0 0 6px;letter-spacing:-.01em}
+.docbody .subtitle{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#918876;letter-spacing:.04em;margin:0 0 34px}
+.docbody h2{font-size:22px;font-weight:500;margin:36px 0 4px;padding-top:14px;border-top:1px solid rgba(38,35,30,.15)}
+.docbody h2 .num{font-family:'IBM Plex Mono',monospace;font-size:13px;color:#A8664A;margin-right:10px}
+.docbody h3{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:#7A6F5E;margin:22px 0 8px}
+.docbody p{font-family:'Newsreader',serif;font-size:16px;line-height:1.65;color:#33302a;margin:0 0 12px}
+.docbody ul{margin:0 0 14px;padding-left:20px}
+.docbody li{font-family:'Newsreader',serif;font-size:16px;line-height:1.6;color:#33302a;margin:0 0 7px}
+.docbody li strong,.docbody p strong{font-weight:600;color:#262320}
+.docbody code{font-family:'IBM Plex Mono',monospace;font-size:13.5px;background:rgba(38,35,30,.07);padding:1.5px 5px;border-radius:4px}
+.docbody table{border-collapse:collapse;width:100%;margin:4px 0 18px;break-inside:avoid}
+.docbody th{font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#918876;text-align:left;padding:6px 12px 6px 0;border-bottom:1.5px solid rgba(38,35,30,.25)}
+.docbody td{font-family:'Newsreader',serif;font-size:15px;color:#33302a;padding:8px 12px 8px 0;border-bottom:1px solid rgba(38,35,30,.12);vertical-align:top}
+.docbody .tier{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.04em;padding:2px 7px;border-radius:4px;margin:0 0 6px}
+.docbody .tier0{background:rgba(178,69,58,.14);color:#B2453A}
+.docbody .tier1{background:rgba(168,102,74,.14);color:#A8664A}
+.docbody .tier2{background:rgba(74,132,100,.14);color:#4A8464}
+.docbody blockquote{margin:0 0 14px;padding:2px 0 2px 16px;border-left:2px solid #4A6FA5;color:#6B6355;font-family:'Newsreader',serif;font-size:16px;font-style:italic}
+.docbody ol.steps{counter-reset:step;list-style:none;padding-left:0;margin:0 0 8px}
+.docbody ol.steps li{counter-increment:step;position:relative;padding-left:34px;margin-bottom:12px;font-family:'Newsreader',serif;font-size:16px;line-height:1.55}
+.docbody ol.steps li::before{content:counter(step);position:absolute;left:0;top:1px;width:22px;height:22px;border-radius:50%;background:#262320;color:#F0EADE;font:600 12px/22px 'IBM Plex Mono',monospace;text-align:center}
+</style>
+<script src="./doc-page.js"></script>
+</helmet>
+
+<doc-page margin="0.85in">
+<div class="docbody">
+<h1>Ced OS — Build Planning Document</h1>
+<p class="subtitle">DRAFT · FOR STACK-SELECTION DISCUSSION · AUG 2026</p>
+
+<p>Personal life-management platform: calendar, journal, notes, finance/budget tracking, a credentials vault, habit tracking, and itinerary planning, unified in one dashboard ("Today" view) with day/night themes.</p>
+<p>This document scopes what it takes to turn the current frontend mockup into a real, secure, well-architected product. It's meant as input to a stack-selection conversation, not a final spec — stack is intentionally left open below.</p>
+
+<h2><span class="num">01</span>What exists today</h2>
+<p>A single-page, client-only mockup (mock/in-memory data, no backend, no auth, no persistence beyond the session). Modules visible in the UI:</p>
+<table>
+<tr><th>Module</th><th>Data it will hold</th></tr>
+<tr><td>Today (dashboard)</td><td>Aggregated view of the below — no independent data</td></tr>
+<tr><td>Calendar</td><td>Events across categories (School, Personal, Money, Health, Travel)</td></tr>
+<tr><td>Journal</td><td>Free-text personal entries</td></tr>
+<tr><td>Notes</td><td>Free-text notes</td></tr>
+<tr><td>Habits</td><td>Habit definitions + daily completion logs</td></tr>
+<tr><td>Money</td><td>Accounts, balances, transactions, budgets</td></tr>
+<tr><td>Vault</td><td><strong>Credentials</strong> (passwords/secrets), categorized (Social, Finance, Work, Shopping, Entertainment)</td></tr>
+<tr><td>Itineraries</td><td>Trip / travel planning</td></tr>
+<tr><td>Settings</td><td>Theme, profile</td></tr>
+</table>
+<p>The Vault module is the one that changes the entire security posture of the project — a credentials store has fundamentally different requirements than a journal or a habit tracker. Treat it as a password-manager-grade subsystem, not "just another app," from day one.</p>
+
+<h2><span class="num">02</span>Data classification</h2>
+<p>Sensitivity drives the security requirements, so classify first:</p>
+<div class="tier tier0">TIER 0 — SECRETS</div>
+<p>Vault credentials (passwords, PINs, account numbers, security answers). Compromise = direct account takeover elsewhere. Requires the strongest protection: client-side encryption, ideally zero-knowledge (server never sees plaintext).</p>
+<div class="tier tier1">TIER 1 — SENSITIVE PERSONAL</div>
+<p>Journal entries, finances (balances, transactions), itineraries (reveals travel dates → physical security risk, e.g. "when is the house empty"). Requires encryption at rest, strict access control, no third-party analytics/logging of content.</p>
+<div class="tier tier2">TIER 2 — PERSONAL, LOWER-STAKES</div>
+<p>Calendar events, notes, habits. Still private, still needs auth + standard protections, but exposure is less catastrophic than Tier 0/1.</p>
+<p>Design the data layer so Tier 0 data is architecturally separated (different encryption keys, ideally a different table/service) from Tier 1/2 — never let a single bug in the notes feature leak vault contents.</p>
+
+<h2><span class="num">03</span>Architecture (stack-agnostic)</h2>
+<p>Rather than lock a stack here, these are the decisions that matter regardless of what you pick, since the stack conversation is happening elsewhere:</p>
+<h3>Client / server split</h3>
+<p>A full client-side app (e.g. local-first with IndexedDB only) avoids server-side breach risk but loses multi-device sync and makes recovery-on-device-loss hard. A thin client + backend API is the more standard, recoverable choice, and is assumed below.</p>
+<h3>Multi-tenancy from day one</h3>
+<p>Even if it's single-user today: every table gets a <code>user_id</code>/<code>owner_id</code> foreign key and every query is scoped by it — retrofitting this later is how horizontal privilege-escalation bugs get born.</p>
+<h3>Database</h3>
+<p>A relational DB (Postgres) fits this data well — structured entities (transactions, events, habits) with relations (budgets → transactions, trips → itinerary items). Use row-level security if the DB supports it (Postgres RLS) as defense-in-depth under app-layer authorization, not instead of it.</p>
+<h3>API style</h3>
+<p>REST or a typed RPC layer (tRPC, etc.) — either is fine; prioritize whichever gives you end-to-end types with your frontend choice, since this is a wide, entity-heavy app.</p>
+<h3>Hosting</h3>
+<p>Managed platform (Vercel / Railway / Fly / Render + managed Postgres) over self-managed servers for a project this size — less infrastructure surface to secure and patch.</p>
+
+<h2><span class="num">04</span>Security</h2>
+<h3>Authentication</h3>
+<ul>
+<li>Use a managed auth provider (Auth.js/NextAuth, Clerk, Supabase Auth, WorkOS) rather than hand-rolled auth. Password hashing, session tokens, and email verification are easy to get subtly wrong and hard to audit yourself.</li>
+<li>Require MFA (TOTP at minimum) — strongly recommended given the Vault module; consider making MFA mandatory specifically to unlock Vault, even if the rest of the app allows password-only login.</li>
+<li>Session tokens: short-lived access token + refresh token, httpOnly + Secure + SameSite=Strict cookies. Never store tokens in localStorage (XSS-exfiltrable).</li>
+<li>Rate-limit login and password-reset endpoints (e.g. 5 attempts / 15 min / IP+account) to blunt credential stuffing.</li>
+</ul>
+
+<h3>Vault (credentials) — its own threat model</h3>
+<ul>
+<li><strong>Zero-knowledge encryption</strong>: derive an encryption key client-side from the user's master password (Argon2id or PBKDF2, high iteration count), encrypt/decrypt vault items in the browser, store only ciphertext server-side. The server should never be able to decrypt vault contents, even under subpoena or breach.</li>
+<li>This means: password reset for the <em>master</em> vault password must be handled differently from account password reset — a lost master password should mean lost vault access, with an explicit recovery-key mechanism the user saves themselves (the same trade-off 1Password/Bitwarden make).</li>
+<li>Auto-lock the vault UI after inactivity (e.g. 5 min) independent of the app session.</li>
+<li>Never log vault plaintext, even in debug/dev logs. Add explicit tests asserting vault fields never appear in server logs or error-tracking payloads (Sentry, etc.).</li>
+</ul>
+
+<h3>Data protection (Tier 1/2)</h3>
+<ul>
+<li>Encryption at rest for the whole database (most managed Postgres providers do this by default — verify it's on).</li>
+<li>Consider field-level encryption for finance data (account numbers, balances) and journal text, using a server-held key (KMS-managed) — a lighter bar than Vault's zero-knowledge requirement, but still real protection.</li>
+<li>TLS everywhere (default on any managed host — confirm HSTS is enabled).</li>
+<li>Backups encrypted, access-logged, and tested for restore — a backup is a second copy of Tier 0/1 data and needs the same scrutiny as the primary store.</li>
+</ul>
+
+<h3>API hardening</h3>
+<ul>
+<li>AuthZ check on every mutating and every reading endpoint — verify <code>resource.owner_id === session.user.id</code> server-side, not just in the client. This is the single most common real-world bug class here (IDOR — user A fetching user B's transaction by guessing/incrementing an ID).</li>
+<li>Input validation on every endpoint with a schema library (Zod, etc.), shared between client and server where possible.</li>
+<li>Parameterized queries / an ORM (Prisma, Drizzle) — never string-concatenated SQL.</li>
+<li>CSRF protection for any cookie-authenticated mutation.</li>
+<li>Standard security headers: CSP, X-Content-Type-Options, X-Frame-Options/frame-ancestors, Referrer-Policy.</li>
+<li>Sensible per-user and per-IP rate limiting on all endpoints, not just auth.</li>
+<li>Dependency scanning (<code>npm audit</code>/Dependabot/Snyk) in CI — keep the many small packages (date libs, chart libs) patched.</li>
+</ul>
+
+<h3>Secrets management (yours, not the user's)</h3>
+<ul>
+<li>API keys, DB credentials, encryption keys live in environment variables / a secrets manager (Doppler, host's built-in secrets) — never committed, never in client bundles.</li>
+<li>Rotate keys on any suspected exposure; document the rotation procedure now while it's cheap to write down.</li>
+</ul>
+
+<h2><span class="num">05</span>Code architecture &amp; cleanliness</h2>
+<ul>
+<li><strong>Module boundaries mirror the app's domains</strong>: <code>calendar/</code>, <code>journal/</code>, <code>notes/</code>, <code>habits/</code>, <code>money/</code>, <code>vault/</code>, <code>itineraries/</code>, each with its own data access, validation, and UI, rather than one flat <code>components/</code> and <code>api/</code> dump. Vault especially should be isolable — easier to audit, easier to reason about what can touch encrypted data.</li>
+<li><strong>Shared kernel</strong>: auth/session, the design system (theme tokens, typography, the paper/dark themes already in the mockup), and generic UI primitives as a shared layer other modules import, not copy-paste.</li>
+</ul>
+<h3>Testing</h3>
+<ul>
+<li>Unit tests for anything with logic: budget calculations, habit streak/rate math, recurrence rules for calendar events, encryption/decryption round-trips for Vault.</li>
+<li>Integration tests for API authorization — the IDOR class of bug above is exactly what these should catch ("user B cannot read user A's data" as an explicit test per resource type).</li>
+<li>E2E smoke tests (Playwright) for critical paths: login, add/view a vault item, add a transaction, complete a habit.</li>
+</ul>
+<h3>CI &amp; environments</h3>
+<ul>
+<li>Lint + typecheck + test + dependency audit on every PR, before merge. Cheap to set up now, expensive to retrofit once the app has real users.</li>
+<li>ESLint + Prettier (or the stack's equivalent) enforced in CI, not just locally.</li>
+<li>Separate dev / staging / prod, with staging using synthetic (never real user) data.</li>
+<li>Structured error tracking (Sentry) with PII/Vault-field scrubbing configured explicitly — don't rely on remembering not to log sensitive fields; scrub at the logging layer.</li>
+</ul>
+
+<h2><span class="num">06</span>Accessibility</h2>
+<p>The mockup already uses a legible serif/mono pairing and two themes — good starting point. To carry that through:</p>
+<ul>
+<li><strong>Contrast</strong>: verify both Paper and Dark themes hit WCAG AA (4.5:1 body text, 3:1 large text/UI) — check the muted-text colors specifically; muted/secondary text is where contrast usually fails first.</li>
+<li><strong>Keyboard navigation</strong>: full app usable without a mouse — nav drawer, calendar grid, habit checkboxes, vault item reveal/copy, all reachable and operable via keyboard, with visible focus states (not just <code>outline:none</code> as currently set on inputs — replace with a visible custom focus ring).</li>
+<li><strong>Screen readers</strong>: semantic HTML and ARIA labels for icon-only buttons (theme toggle, hamburger, settings gear) — several currently render as bare SVGs/glyphs with no <code>aria-label</code> in the mockup.</li>
+<li><strong>Forms</strong>: every input has an associated <code>&lt;label&gt;</code> (not just placeholder text), and errors are announced (<code>aria-live</code>), especially relevant for Vault (password fields) and Money (amount entry).</li>
+<li><strong>Reduced motion</strong>: respect <code>prefers-reduced-motion</code> for any transitions/animations added later.</li>
+<li><strong>Sensitive-content specific</strong>: a screen reader announcing a vault password character-by-character in a public space is itself a leak — make "reveal password" an explicit user action, never on-focus auto-announce.</li>
+</ul>
+
+<h2><span class="num">07</span>Open decisions (for the stack conversation)</h2>
+<ul>
+<li>Framework (Next.js / Remix / SvelteKit / etc.) and whether SSR matters here (mostly private, logged-in views — SSR benefit is smaller than for a public marketing site).</li>
+<li>Managed auth provider vs. custom (recommendation above: managed).</li>
+<li>Local-first/offline support — worth having itineraries/notes available offline? Affects sync architecture significantly if yes.</li>
+<li>Mobile: responsive web only, or a native/PWA wrapper later? Affects how "install as app" and offline are handled.</li>
+<li>Whether Vault is built in-house per section 4, or whether integrating an existing password-manager API/SDK is preferable to owning that liability yourself.</li>
+</ul>
+
+<h2><span class="num">08</span>Suggested next steps</h2>
+<ol class="steps">
+<li>Finalize stack (separate conversation).</li>
+<li>Stand up auth + multi-tenant DB schema first, before porting any UI module — every feature after this point should be built "user-scoped" from the start.</li>
+<li>Build Vault's encryption layer second, in isolation, with tests, before wiring it to UI — it's the highest-risk piece and the one hardest to retrofit.</li>
+<li>Port remaining modules (Calendar, Journal, Notes, Habits, Money, Itineraries) onto the real backend.</li>
+<li>Add CI (lint/type/test/audit) before the first module ships, not after.</li>
+<li>Accessibility pass once core flows are real (contrast, keyboard, ARIA) — cheaper to fix while components are still being written than after the fact.</li>
+</ol>
+</div>
+</doc-page>
+
+</x-dc>
+</body>
+</html>

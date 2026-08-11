@@ -1,5 +1,22 @@
-import { NotBuiltYet } from "@/core/ui/not-built-yet";
+import { requireSession } from "@/core/auth/session";
+import { todayIso } from "@/core/date";
+import { PageHeader } from "@/core/ui/page-header";
+import { listToday } from "@/modules/habits/service";
+import { HabitsPage } from "@/modules/habits/ui/habits-page";
+import { getSettings } from "@/modules/settings/service";
 
-export default function Habits() {
-  return <NotBuiltYet kicker="Track" title="Habits" phase="phase 5" />;
+export default async function Habits() {
+  const session = await requireSession();
+  const today = todayIso(session.timezone);
+  const settings = await getSettings(session.userId);
+  const habits = await listToday(session.userId, today, settings.weekStartsOn);
+
+  return (
+    <>
+      <PageHeader kicker="Track" title="Habits" />
+      <div className="flex-1 overflow-auto">
+        <HabitsPage initialToday={habits} today={today} />
+      </div>
+    </>
+  );
 }

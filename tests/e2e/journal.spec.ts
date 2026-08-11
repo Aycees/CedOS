@@ -56,7 +56,10 @@ test("an entry can be backdated rather than forced to today", async ({ page }) =
   const body = unique("Writing today about last week.");
   await writeEntry(page, body, "2026-08-04");
 
-  await expect(page.getByText("AUG 4, 2026")).toBeVisible();
+  // Scoped to this run's entry — the account accumulates entries across runs.
+  await expect(page.getByRole("button", { name: new RegExp(body) })).toContainText(
+    "AUG 4, 2026",
+  );
 });
 
 test("entries list newest first", async ({ page }) => {

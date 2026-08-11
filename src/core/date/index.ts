@@ -55,6 +55,21 @@ export function isoToDbDate(value: IsoDate): Date {
   return parsed.toJSDate();
 }
 
+/**
+ * Converts "HH:mm" to the Date a `@db.Time(0)` column expects.
+ *
+ * Anchored to the UTC epoch day for the same reason calendar dates are: the
+ * value carries no date and no zone, and letting a local zone touch it would
+ * shift the clock time.
+ */
+export function timeToDb(value: string): Date {
+  const parsed = DateTime.fromFormat(value, "HH:mm", { zone: "utc" });
+  if (!parsed.isValid) {
+    throw new Error(`Not a time of day: ${value}`);
+  }
+  return parsed.set({ year: 1970, month: 1, day: 1 }).toJSDate();
+}
+
 /** Parses a `@db.Time(0)` column ("HH:mm:ss") into minutes since midnight, for sorting. */
 export function timeToMinutes(value: Date | null): number | null {
   if (!value) return null;

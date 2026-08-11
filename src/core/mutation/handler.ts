@@ -33,10 +33,7 @@ export function route<TSchema extends z.ZodType, TResult>(
       const session = await requireSession();
       const params = (await context?.params) ?? {};
 
-      const raw =
-        request.method === "GET" || request.method === "DELETE"
-          ? Object.fromEntries(new URL(request.url).searchParams)
-          : await request.json().catch(() => ({}));
+      const raw = await readInput(request);
 
       const parsed = schema.safeParse(raw);
       if (!parsed.success) {
@@ -74,6 +71,31 @@ export function readRoute<TResult>(
       return toResponse(error);
     }
   };
+}
+
+/**
+ * Where a handler's input comes from.
+ *
+ * GET always reads the query string. DELETE reads a JSON body when one is
+ * sent and falls back to the query string otherwise — both forms are in use:
+ * `?id=…` for a plain delete, and a body for the multi-mode deletes that
+ * decision A1's reassign/cascade exits need. Reading only the query string
+ * silently dropped those extra fields.
+ */
+async function readInput(request: Request): Promise<unknown> {
+  if (request.method === "GET") {
+    return Object.fromEntries(new URL(request.url).searchParams);
+  }
+
+  const hasJsonBody = request.headers
+    .get("content-type")
+    ?.includes("application/json");
+
+  if (request.method === "DELETE" && !hasJsonBody) {
+    return Object.fromEntries(new URL(request.url).searchParams);
+  }
+
+  return request.json().catch(() => ({}));
 }
 
 function toResponse(error: unknown): Response {

@@ -249,7 +249,9 @@ Two modules deserve isolated, heavily-tested engines rather than logic smeared a
 
 ## 9. Remaining blocks
 
-**Complete.** Blocks D–H are documented in `ced-os-system-design.md`, which also resolves the four gaps in §3 above:
+**Complete.** Blocks D–H are documented in `ced-os-system-design.md`, which also resolves the four gaps in §3 above.
+
+**All five of that document's §9 sign-off items were accepted as specified, and the product specification has been updated to match.** Implementation is underway: phases 0–2 of the build order are complete. See §10 of the system design for status.
 
 - **G1 · Account transfers** → paired double-entry rows sharing a `transferGroupId`
 - **G2 · Backup/export** → JSON export endpoint in v1; Vault as ciphertext by default

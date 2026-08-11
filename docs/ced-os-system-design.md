@@ -899,10 +899,25 @@ The habit cadence cases in §5.1 above are Vitest unit tests instead, since they
 
 ## 9. Open items requiring your sign-off
 
-1. **G1 transfers** — paired rows accepted?
-2. **PIN downgrade** (§4.3) — this changes the product spec's §11 claim that PIN and master password are peers.
-3. **Vault full-record encryption** (§4.1) — accepts client-side-only search.
-4. **Two new Calendar event fields** (`location`, `note`) required by the Itinerary push.
-5. **`weekStartsOn` setting** — new addition to Settings §12 from decision A5.
+**All five signed off as specified.** The product specification has been updated, so the two documents no longer disagree.
 
-Items 2, 4, and 5 are changes to the product specification, not just the technical design. Update `Ced OS - Product Specification.md` before handoff so the two documents do not disagree.
+1. ~~**G1 transfers** — paired rows accepted?~~ **Accepted.** In the schema as `Transaction.transferGroupId`, with a check constraint enforcing that a `TRANSFER` row has a group and no category.
+2. ~~**PIN downgrade** (§4.3)~~ **Accepted.** Product spec §11 rewritten: the master password is the credential; the PIN is a device-local convenience re-unlock.
+3. ~~**Vault full-record encryption** (§4.1)~~ **Accepted.** `VaultItem` is a sealed blob; all search and filtering is client-side.
+4. ~~**Two new Calendar event fields**~~ **Accepted.** `location` and `note` are on `CalendarEvent` and in product spec §4.
+5. ~~**`weekStartsOn` setting**~~ **Accepted.** On `UserSettings`, in product spec §12, and exposed in the Settings screen.
+
+---
+
+## 10. Build status
+
+| Phase | Status |
+|---|---|
+| 0 · Foundation | **Done** — token layer, Tailwind v4 mapping, theme/accent/density runtime, six primitives, app shell |
+| 1 · Core | **Done** — full schema + migration, `core/db/scope.ts`, Supabase auth, mutation client, error contract, `ImpactPreviewDialog`, Settings, Profile, seed |
+| 2 · Tasks + Journal | **Done** — both modules CRUD-complete; 15 Playwright edge-case tests, 23 Vitest unit tests |
+| 3–10 | Not started |
+
+Two deviations from this document, both forced by dependency majors rather than chosen, are recorded in `CLAUDE.md`: Prisma 7 moves the connection URL into `prisma.config.ts` and requires a driver adapter on the client (so §3.1's `datasource` snippet no longer applies verbatim), and Tailwind v4 expresses the §6 token mapping in CSS via `@theme inline` rather than in a JS config.
+
+One finding from building §6's contrast matrix is **open and unresolved**: several token pairs in the extracted design system fall below WCAG AA. See `CLAUDE.md` § "Known issues".

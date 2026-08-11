@@ -1,5 +1,7 @@
 import { expect, test as setup, type Page } from "@playwright/test";
 
+import { resetE2EData } from "./reset";
+
 const AUTH_FILE = "tests/e2e/.auth/user.json";
 
 export const E2E_EMAIL = "e2e@ced.local";
@@ -23,6 +25,10 @@ setup("authenticate", async ({ page }) => {
   await page.waitForURL((url) => !url.pathname.startsWith("/sign-in"));
   await expect(page.getByRole("link", { name: /Settings/ })).toBeVisible();
   await page.context().storageState({ path: AUTH_FILE });
+
+  // Start every run from an empty account, so first-use states are real and
+  // assertions do not drift into ambiguity as data piles up.
+  await resetE2EData(E2E_EMAIL);
 });
 
 async function submit(page: Page, mode: "sign-in" | "sign-up"): Promise<boolean> {

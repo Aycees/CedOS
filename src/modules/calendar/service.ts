@@ -287,6 +287,15 @@ export async function deleteEvent(userId: string, id: string) {
   await prisma.calendarEvent.update({ where: { id }, data: softDeleted() });
 }
 
+/** Every event ever created, for the JSON export (G2) — unlike the grid, unbounded. */
+export async function listAllEvents(userId: string): Promise<EventView[]> {
+  const events = await prisma.calendarEvent.findMany({
+    where: live(userId),
+    orderBy: [{ eventDate: "asc" }, { startTime: "asc" }],
+  });
+  return events.map(toEventView);
+}
+
 /** Today's events, time-sorted, for the Home rollup (product spec §3). */
 export async function listTodayEvents(
   userId: string,

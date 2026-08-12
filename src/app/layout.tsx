@@ -3,6 +3,7 @@ import { IBM_Plex_Mono, Newsreader } from "next/font/google";
 
 import { getSession } from "@/core/auth/session";
 import { QueryProvider } from "@/core/mutation/query-provider";
+import { RegisterServiceWorker } from "@/core/pwa/register-service-worker";
 import { AppearanceScript } from "@/core/theme/appearance-script";
 import { DEFAULT_APPEARANCE, isAccent, isDensity, isTheme } from "@/core/theme/types";
 
@@ -76,6 +77,7 @@ export default async function RootLayout({
     >
       <body>
         <AppearanceScript />
+        <RegisterServiceWorker />
         <QueryProvider>{children}</QueryProvider>
       </body>
     </html>

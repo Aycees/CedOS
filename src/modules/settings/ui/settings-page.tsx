@@ -8,6 +8,7 @@ import { ACCENTS, type Accent } from "@/core/theme/types";
 import { Card } from "@/core/ui/card";
 import { cn } from "@/core/ui/cn";
 import { Segmented } from "@/core/ui/segmented";
+import { VaultExportPanel } from "@/modules/vault/ui/export-panel";
 
 /**
  * Settings holds no data of its own (product spec §12) — it is a view onto
@@ -90,6 +91,25 @@ export function SettingsPage({
             ]}
           />
         </Row>
+      </Card>
+
+      <Card>
+        <h2 className="m-0 font-serif text-[18px] font-normal">Data export</h2>
+        <p className="m-0 mt-1.5 font-mono text-[11.5px] leading-relaxed text-muted">
+          A single file with every module. Vault credentials are included as
+          ciphertext by default — decrypting them for export is a separate,
+          explicit step.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2.5">
+          <a
+            href="/api/export"
+            download={`ced-os-export-${new Date().toISOString().slice(0, 10)}.json`}
+            className="inline-flex items-center gap-1.5 rounded-control border border-border px-4 py-[10px] font-mono text-[12px] text-text"
+          >
+            export all data
+          </a>
+          <VaultExportPanel />
+        </div>
       </Card>
 
       <Card>

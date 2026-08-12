@@ -1,0 +1,140 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+/*
+ * Tailwind v4 reads the token layer rather than literal values, so a utility
+ * like `bg-card` resolves through --card and re-resolves the instant
+ * [data-theme] / [data-accent] / [data-density] changes on <html>.
+ *
+ * `inline` matters here: it inlines the var() reference into the generated
+ * utility instead of copying the resolved value at build time. Without it,
+ * theme switching would not propagate.
+ */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-sidebar: var(--sidebar);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-dot: var(--dot);
+  --color-checkbox: var(--checkbox);
+  --color-on-dark: var(--on-dark);
+  --color-overlay: var(--overlay);
+  --color-hairline: var(--hairline);
+
+  --color-accent: var(--accent-default);
+  --color-accent-blue: var(--accent-blue);
+  --color-accent-green: var(--accent-green);
+  --color-accent-terracotta: var(--accent-terracotta);
+  --color-accent-violet: var(--accent-violet);
+  --color-accent-red: var(--accent-red);
+  --color-accent-warmgray: var(--accent-warmgray);
+  --color-accent-sky: var(--accent-sky);
+  --color-accent-mauve: var(--accent-mauve);
+
+  /*
+   * Radii are literals, not var() references. They are identical across every
+   * theme, and self-referencing a token of the same name (--radius-card:
+   * var(--radius-card)) would be a circular declaration. Values match
+   * design-reference/tokens/spacing.css exactly.
+   */
+  --radius-card: 12px;
+  --radius-modal: 14px;
+  --radius-control: 9px;
+  --radius-input: 8px;
+  --radius-pill: 20px;
+
+  /*
+   * Named --shadow-dialog rather than --shadow-modal for the same reason:
+   * the underlying token is theme-dependent, so it must stay a live reference
+   * and cannot share a name with the theme key pointing at it.
+   */
+  --shadow-dialog: var(--shadow-modal);
+
+  --font-serif: var(--font-newsreader), Newsreader, serif;
+  --font-mono: var(--font-plex-mono), "IBM Plex Mono", monospace;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /*
+   * design-reference/readme.md — "Animation: none observed. State changes are
+   * instant, no transitions/eases." Honoured deliberately, not by omission.
+   */
+
+  button {
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+  }
+
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+
+  input:focus,
+  textarea:focus {
+    outline: none;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--hairline);
+    border-radius: 8px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+}
+
+@layer components {
+  /*
+   * The defining motif: solid border around a card, dashed dividers between
+   * the rows inside it (design-reference/readme.md — "Dividers").
+   */
+  .row-divider {
+    border-top: 1px dashed var(--border);
+  }
+
+  /* Density-aware list row. Padding is the one thing density scales. */
+  .list-row {
+    padding-top: var(--row-pad);
+    padding-bottom: var(--row-pad);
+  }
+
+  /* Uppercase, letter-spaced mono label — "printed on a ledger" voice. */
+  .kicker {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+}

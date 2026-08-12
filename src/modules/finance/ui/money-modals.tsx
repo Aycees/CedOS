@@ -1,0 +1,704 @@
+"use client";
+
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+
+import { AppError, userMessage } from "@/core/errors";
+import { newId } from "@/core/ids";
+import { formatMoney } from "@/core/money";
+import { api } from "@/core/mutation/client";
+import { formatListDate } from "@/core/date";
+import { Button } from "@/core/ui/button";
+import { cn } from "@/core/ui/cn";
+import { ImpactPreviewDialog } from "@/core/ui/impact-preview-dialog";
+import { Input, Textarea } from "@/core/ui/input";
+import { Modal, ModalActions } from "@/core/ui/modal";
+import { Segmented } from "@/core/ui/segmented";
+import { CATEGORY_COLORS } from "@/modules/calendar/schema";
+
+import {
+  ACCOUNT_KINDS,
+  KIND_LABELS,
+  type AccountKind,
+  type AccountView,
+  type CategoryView,
+  type TransactionView,
+} from "../schema";
+
+const invalidateFinance = (queryClient: ReturnType<typeof useQueryClient>) =>
+  queryClient.invalidateQueries({ queryKey: ["finance"] });
+
+// ---------------------------------------------------------------------------
+
+export function AccountModal({
+  account,
+  accounts,
+  onClose,
+}: {
+  account: AccountView | null;
+  accounts: AccountView[];
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState(account?.name ?? "");
+  const [kind, setKind] = useState<AccountKind>(account?.kind ?? "CASH");
+  const [opening, setOpening] = useState("0");
+  const [error, setError] = useState<string | null>(null);
+  const [impact, setImpact] = useState<{
+    accountName: string;
+    transactions: { id: string; name: string; occurredOn: string; amount: string }[];
+  } | null>(null);
+
+  const done = () => {
+    void invalidateFinance(queryClient);
+    onClose();
+  };
+
+  const save = useMutation({
+    mutationFn: () =>
+      account
+        ? api.patch("/api/finance/accounts", { id: account.id, name, kind })
+        : api.post("/api/finance/accounts", {
+            id: newId(),
+            name,
+            kind,
+            openingBalance: opening || "0",
+          }),
+    onSuccess: done,
+    onError: (e) => setError(userMessage(e, "That didn't save.")),
+  });
+
+  const attemptDelete = useMutation({
+    mutationFn: () =>
+      api.delete("/api/finance/accounts", { id: account!.id, mode: "check" }),
+    onSuccess: done,
+    onError: async (e) => {
+      if (e instanceof AppError && e.code === "REFERENCED") {
+        setImpact(
+          await api.get(`/api/finance/accounts?impactFor=${account!.id}`),
+        );
+        return;
+      }
+      // Includes "you need at least one account", which is blocked outright
+      // rather than offered as a choice (product spec §9).
+      setError(userMessage(e, "That could not be deleted."));
+    },
+  });
+
+  const resolveDelete = useMutation({
+    mutationFn: (vars: { mode: "reassign" | "cascade"; targetAccountId?: string }) =>
+      api.delete("/api/finance/accounts", { id: account!.id, ...vars }),
+    onSuccess: done,
+  });
+
+  if (impact && account) {
+    return (
+      <ImpactPreviewDialog
+        open
+        onOpenChange={(open) => !open && setImpact(null)}
+        title={`Delete "${impact.accountName}"?`}
+        noun="transactions"
+        records={impact.transactions.map((t) => ({
+          id: t.id,
+          label: t.name,
+          meta: `${formatListDate(t.occurredOn)} · ${formatMoney(t.amount)}`,
+        }))}
+        reassignTargets={accounts
+          .filter((a) => a.id !== account.id)
+          .map((a) => ({ id: a.id, label: a.name }))}
+        reassignLabel="Move all to"
+        pending={resolveDelete.isPending}
+        onReassign={(targetAccountId) =>
+          resolveDelete.mutate({ mode: "reassign", targetAccountId })
+        }
+        onDeleteAll={() => resolveDelete.mutate({ mode: "cascade" })}
+      />
+    );
+  }
+
+  return (
+    <Modal
+      open
+      onOpenChange={(open) => !open && onClose()}
+      kicker={account ? "EDIT ACCOUNT" : "NEW ACCOUNT"}
+      title={account ? "Edit account" : "New account"}
+      width={420}
+    >
+      <div className="mt-5 flex flex-col gap-4">
+        <label className="flex flex-col gap-1.5">
+          <span className="kicker">Name</span>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Wallet, GCash, Savings…"
+            autoFocus
+          />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="kicker">Type</span>
+          <select
+            value={kind}
+            onChange={(e) => setKind(e.target.value as AccountKind)}
+            className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+          >
+            {ACCOUNT_KINDS.map((option) => (
+              <option key={option} value={option}>
+                {KIND_LABELS[option]}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {!account && (
+          <label className="flex flex-col gap-1.5">
+            <span className="kicker">Opening balance</span>
+            <Input
+              value={opening}
+              onChange={(e) => setOpening(e.target.value)}
+              inputMode="decimal"
+            />
+          </label>
+        )}
+
+        {error && <p className="m-0 font-mono text-[11.5px] text-accent-red">{error}</p>}
+      </div>
+
+      <ModalActions
+        destructive={
+          account ? (
+            <Button variant="outline" onClick={() => attemptDelete.mutate()}>
+              delete
+            </Button>
+          ) : null
+        }
+      >
+        <Button variant="outline" onClick={onClose}>
+          cancel
+        </Button>
+        <Button onClick={() => save.mutate()} disabled={!name.trim() || save.isPending}>
+          save
+        </Button>
+      </ModalActions>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export function TransactionModal({
+  transaction,
+  accounts,
+  categories,
+  today,
+  onClose,
+}: {
+  transaction: TransactionView | null;
+  accounts: AccountView[];
+  categories: CategoryView[];
+  today: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const isTransferRow = transaction?.type === "TRANSFER";
+
+  const [mode, setMode] = useState<"EXPENSE" | "INCOME" | "TRANSFER">(
+    transaction ? (transaction.type === "TRANSFER" ? "TRANSFER" : transaction.type) : "EXPENSE",
+  );
+  const [name, setName] = useState(transaction?.name ?? "");
+  const [occurredOn, setOccurredOn] = useState(transaction?.occurredOn ?? today);
+  const [amount, setAmount] = useState(
+    transaction ? String(Math.abs(Number(transaction.amount))) : "",
+  );
+  const [accountId, setAccountId] = useState(transaction?.accountId ?? accounts[0]?.id ?? "");
+  const [toAccountId, setToAccountId] = useState(accounts[1]?.id ?? "");
+  const [categoryId, setCategoryId] = useState(transaction?.categoryId ?? "");
+  const [error, setError] = useState<string | null>(null);
+
+  const done = () => {
+    void invalidateFinance(queryClient);
+    onClose();
+  };
+
+  const save = useMutation({
+    mutationFn: () => {
+      if (mode === "TRANSFER") {
+        return api.post("/api/finance/transfers", {
+          groupId: newId(),
+          outId: newId(),
+          inId: newId(),
+          name: name || "Transfer",
+          occurredOn,
+          amount,
+          fromAccountId: accountId,
+          toAccountId,
+        });
+      }
+
+      const payload = {
+        name,
+        occurredOn,
+        amount,
+        type: mode,
+        accountId,
+        categoryId: categoryId || null,
+      };
+      return transaction
+        ? api.patch("/api/finance/transactions", { id: transaction.id, ...payload })
+        : api.post("/api/finance/transactions", { id: newId(), ...payload });
+    },
+    onSuccess: done,
+    onError: (e) => setError(userMessage(e, "That didn't save.")),
+  });
+
+  const remove = useMutation({
+    mutationFn: () =>
+      api.delete("/api/finance/transactions", { id: transaction!.id }),
+    onSuccess: done,
+  });
+
+  return (
+    <Modal
+      open
+      onOpenChange={(open) => !open && onClose()}
+      kicker={transaction ? "EDIT TRANSACTION" : "NEW TRANSACTION"}
+      title={transaction ? "Edit transaction" : "New transaction"}
+      width={460}
+    >
+      <div className="mt-5 flex flex-col gap-4">
+        {!transaction && (
+          <Segmented
+            aria-label="Kind"
+            value={mode}
+            onChange={setMode}
+            options={[
+              { label: "Expense", value: "EXPENSE" },
+              { label: "Income", value: "INCOME" },
+              { label: "Transfer", value: "TRANSFER" },
+            ]}
+          />
+        )}
+
+        {isTransferRow && (
+          <p className="m-0 font-mono text-[11.5px] text-muted">
+            {/* G1: a transfer is two paired rows presented as one movement. */}
+            this is one leg of a transfer — deleting it removes both
+          </p>
+        )}
+
+        <label className="flex flex-col gap-1.5">
+          <span className="kicker">Name</span>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={mode === "TRANSFER" ? "Transfer" : "Groceries, jeepney fare…"}
+            disabled={isTransferRow}
+          />
+        </label>
+
+        <div className="flex gap-3">
+          <label className="flex flex-1 flex-col gap-1.5">
+            <span className="kicker">Date</span>
+            <Input
+              type="date"
+              value={occurredOn}
+              onChange={(e) => setOccurredOn(e.target.value)}
+              disabled={isTransferRow}
+            />
+          </label>
+          <label className="flex flex-1 flex-col gap-1.5">
+            <span className="kicker">Amount</span>
+            <Input
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              inputMode="decimal"
+              placeholder="0.00"
+              disabled={isTransferRow}
+            />
+          </label>
+        </div>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="kicker">{mode === "TRANSFER" ? "From" : "Account"}</span>
+          <select
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+            disabled={isTransferRow}
+            aria-label={mode === "TRANSFER" ? "Transfer from" : "Account"}
+            className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+          >
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {mode === "TRANSFER" ? (
+          <label className="flex flex-col gap-1.5">
+            <span className="kicker">To</span>
+            <select
+              value={toAccountId}
+              onChange={(e) => setToAccountId(e.target.value)}
+              aria-label="Transfer to"
+              className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+            >
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label className="flex flex-col gap-1.5">
+            <span className="kicker">Category</span>
+            <select
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              disabled={isTransferRow}
+              className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+            >
+              <option value="">uncategorised</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {error && <p className="m-0 font-mono text-[11.5px] text-accent-red">{error}</p>}
+      </div>
+
+      <ModalActions
+        destructive={
+          transaction ? (
+            <Button variant="outline" onClick={() => remove.mutate()}>
+              delete
+            </Button>
+          ) : null
+        }
+      >
+        <Button variant="outline" onClick={onClose}>
+          cancel
+        </Button>
+        <Button
+          onClick={() => save.mutate()}
+          disabled={save.isPending || isTransferRow || !amount}
+        >
+          save
+        </Button>
+      </ModalActions>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export function CategoryModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState("");
+  const [color, setColor] = useState<string>("blue");
+
+  const save = useMutation({
+    mutationFn: () => api.post("/api/finance/categories", { id: newId(), name, color }),
+    onSuccess: () => {
+      void invalidateFinance(queryClient);
+      onClose();
+    },
+  });
+
+  return (
+    <Modal
+      open
+      onOpenChange={(open) => !open && onClose()}
+      kicker="NEW CATEGORY"
+      title="New category"
+      width={400}
+    >
+      <div className="mt-5 flex flex-col gap-4">
+        <label className="flex flex-col gap-1.5">
+          <span className="kicker">Name</span>
+          <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        </label>
+        <div className="flex flex-col gap-1.5">
+          <span className="kicker">Color</span>
+          <div className="flex flex-wrap gap-2">
+            {CATEGORY_COLORS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-label={option}
+                aria-pressed={color === option}
+                onClick={() => setColor(option)}
+                className={cn(
+                  "size-6 rounded-full border-2",
+                  color === option ? "border-text" : "border-transparent",
+                )}
+                style={{ background: `var(--accent-${option})` }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+      <ModalActions>
+        <Button variant="outline" onClick={onClose}>
+          cancel
+        </Button>
+        <Button onClick={() => save.mutate()} disabled={!name.trim()}>
+          save
+        </Button>
+      </ModalActions>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export function DebtModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [direction, setDirection] = useState<"OWED_TO_ME" | "I_OWE">("OWED_TO_ME");
+  const [personName, setPersonName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.post("/api/finance/debts", {
+        id: newId(),
+        direction,
+        personName,
+        amount,
+        note: note || null,
+      }),
+    onSuccess: () => {
+      void invalidateFinance(queryClient);
+      onClose();
+    },
+  });
+
+  return (
+    <Modal
+      open
+      onOpenChange={(open) => !open && onClose()}
+      kicker="NEW DEBT"
+      title="New debt"
+      width={420}
+    >
+      <div className="mt-5 flex flex-col gap-4">
+        <Segmented
+          aria-label="Direction"
+          value={direction}
+          onChange={setDirection}
+          options={[
+            { label: "Owed to me", value: "OWED_TO_ME" },
+            { label: "I owe", value: "I_OWE" },
+          ]}
+        />
+        <label className="flex flex-col gap-1.5">
+          <span className="kicker">Person</span>
+          <Input
+            value={personName}
+            onChange={(e) => setPersonName(e.target.value)}
+            autoFocus
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="kicker">Amount</span>
+          <Input
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            inputMode="decimal"
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="kicker">Note</span>
+          <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+        </label>
+      </div>
+      <ModalActions>
+        <Button variant="outline" onClick={onClose}>
+          cancel
+        </Button>
+        <Button onClick={() => save.mutate()} disabled={!personName.trim() || !amount}>
+          save
+        </Button>
+      </ModalActions>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * The "allowance" from product spec §9 — expected periodic income, which is
+ * what the overview measures the month's spending against.
+ *
+ * There is one per user, so this upserts rather than creating a list.
+ */
+export function IncomeModal({
+  income,
+  today,
+  onClose,
+}: {
+  income: { id: string; name: string; amount: string; nextOn: string } | null;
+  today: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState(income?.name ?? "Allowance");
+  const [amount, setAmount] = useState(income?.amount ?? "");
+  const [nextOn, setNextOn] = useState(income?.nextOn ?? today);
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.post("/api/finance/income", {
+        id: income?.id ?? newId(),
+        name,
+        amount,
+        cadence: "MONTHLY",
+        nextOn,
+      }),
+    onSuccess: () => {
+      void invalidateFinance(queryClient);
+      onClose();
+    },
+  });
+
+  return (
+    <Modal
+      open
+      onOpenChange={(open) => !open && onClose()}
+      kicker={income ? "EDIT ALLOWANCE" : "SET ALLOWANCE"}
+      title={income ? "Edit allowance" : "Set allowance"}
+      width={400}
+    >
+      <div className="mt-5 flex flex-col gap-4">
+        <label className="flex flex-col gap-1.5">
+          <span className="kicker">Name</span>
+          <Input value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="kicker">Amount a month</span>
+          <Input
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            inputMode="decimal"
+            autoFocus
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="kicker">Next on</span>
+          <Input type="date" value={nextOn} onChange={(e) => setNextOn(e.target.value)} />
+        </label>
+      </div>
+      <ModalActions>
+        <Button variant="outline" onClick={onClose}>
+          cancel
+        </Button>
+        <Button onClick={() => save.mutate()} disabled={!amount}>
+          save
+        </Button>
+      </ModalActions>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export function BudgetModal({
+  categories,
+  groups,
+  onClose,
+}: {
+  categories: CategoryView[];
+  groups: { id: string; name: string }[];
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? "");
+  const [limitAmount, setLimitAmount] = useState("");
+  const [groupId, setGroupId] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.post("/api/finance/budgets", {
+        id: newId(),
+        categoryId,
+        limitAmount,
+        period: "MONTHLY",
+        groupId: groupId || null,
+      }),
+    onSuccess: () => {
+      void invalidateFinance(queryClient);
+      onClose();
+    },
+    onError: (e) => setError(userMessage(e, "That didn't save.")),
+  });
+
+  return (
+    <Modal
+      open
+      onOpenChange={(open) => !open && onClose()}
+      kicker="NEW BUDGET"
+      title="New budget"
+      width={420}
+    >
+      <div className="mt-5 flex flex-col gap-4">
+        <label className="flex flex-col gap-1.5">
+          <span className="kicker">Category</span>
+          <select
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+            className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+          >
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="kicker">Monthly cap</span>
+          <Input
+            value={limitAmount}
+            onChange={(e) => setLimitAmount(e.target.value)}
+            inputMode="decimal"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="kicker">Group · optional</span>
+          <select
+            value={groupId}
+            onChange={(e) => setGroupId(e.target.value)}
+            className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+          >
+            <option value="">No group</option>
+            {groups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {error && <p className="m-0 font-mono text-[11.5px] text-accent-red">{error}</p>}
+      </div>
+      <ModalActions>
+        <Button variant="outline" onClick={onClose}>
+          cancel
+        </Button>
+        <Button onClick={() => save.mutate()} disabled={!categoryId || !limitAmount}>
+          save
+        </Button>
+      </ModalActions>
+    </Modal>
+  );
+}

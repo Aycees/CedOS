@@ -58,7 +58,8 @@ New apps are added by: choosing the nav group they belong to (or proposing a new
 - **Categories ("calendars")**: none exist by default — the user creates every category themselves (new calendar = a name + a color swatch). Categories are also user-editable (rename, recolor) and deletable.
 - **Filters**: toggle any category on/off to show/hide its events on the grid.
 - Month grid view; each day cell shows its events, time-sorted.
-- Event fields: title, date, time (optional — untimed/all-day events are supported), category.
+- Event fields: title, date, time (optional — untimed/all-day events are supported), category, location (optional), note (optional).
+  - *Location and note were added during system design.* An Itinerary stop carries both (§10), so pushing a stop into the Calendar would silently discard them unless an event can hold them. See `ced-os-system-design.md` §3.2.
 - Create/edit/delete events via a modal, reachable from a day cell, the "+ new event" header action, or from Home.
 - Itineraries can **push** their stops into Calendar as a batch of Travel-category events (see §9).
 
@@ -196,7 +197,8 @@ New apps are added by: choosing the nav group they belong to (or proposing a new
 **Purpose:** stores personal credentials (site, username, password, URL, notes) — the most sensitive app in the platform. Functionally this section covers *product* behavior only; encryption/security requirements live in the build planning doc, but the product-level rule is: **treat Vault as fundamentally higher-stakes than every other app, and never let a shortcut taken elsewhere (e.g. "just reuse the Notes modal") weaken it.**
 
 **Features:**
-- **Lock/unlock**: separate from general app access. Two unlock methods supported: 4-digit PIN or a master password. Locked by default on load (configurable).
+- **Lock/unlock**: separate from general app access. Locked by default on load (configurable). The master password is the credential; a 4-digit PIN is an optional, device-local convenience for re-unlocking after an auto-lock.
+  - *Revised during system design.* An earlier version of this spec listed PIN and master password as peers. They cannot be: a 4-digit PIN has 10,000 possibilities and an attacker holding the database would brute-force it in under a second, whatever the KDF settings. So the first unlock on any device always requires the master password; the user may then enable a PIN, which wraps the key under a PIN-derived value *plus* a high-entropy device secret held only on that device and never sent to the server. Five failed PIN attempts wipe the device secret and force the master password again. The product experience — quick PIN re-entry after auto-lock — is preserved; the security claim is now honest. See `ced-os-system-design.md` §4.3.
 - **Auto-lock on inactivity**: an idle timer (configurable duration) automatically re-locks the vault if the user is on the Vault screen without interaction (mouse/keyboard/scroll/click all count as activity).
 - **Credential list**: searchable by site/username/category.
 - **Categories**: Social, Finance, Work, Shopping, Entertainment, Other — filterable, color-coded, user-assignable per credential.
@@ -223,6 +225,8 @@ New apps are added by: choosing the nav group they belong to (or proposing a new
 - **Theme**: Paper (light) and Dark modes.
 - **Accent color**: user picks from a curated swatch set; applied across nav highlights, primary buttons, progress rings, etc.
 - **Density**: Comfortable or Compact — adjusts spacing/padding platform-wide.
+- **Week starts on**: Monday or Sunday.
+  - *Added during technical planning (decision A5).* Habits with an "N times per week" cadence cannot compute their weekly window without knowing where the week begins, so this is a prerequisite for Habits rather than a preference.
 - **Account card**: name/avatar-initial, opens the Profile page.
 
 **Edge cases:**

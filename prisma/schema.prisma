@@ -1,0 +1,712 @@
+// Ced OS — database schema.
+//
+// Transcribed from `docs/ced-os-system-design.md` §3. That document is the
+// source of truth; do not change a model here without changing it there.
+//
+// Platform conventions (§1), applied to every model without exception:
+//   · Primary key  — String @id @db.Uuid, generated CLIENT-SIDE as UUIDv7.
+//                    Never @default. This preserves the offline option
+//                    (technical decisions §1) and enables optimistic UI.
+//   · Ownership    — userId on every table; every query filters on it
+//                    through core/db/scope.ts.
+//   · Timestamps   — createdAt / updatedAt everywhere.
+//   · Soft delete  — deletedAt on all user-generated data.
+//   · Money        — Decimal(14,2). Never Float, anywhere, ever.
+//   · Dates        — calendar dates are @db.Date; only instants use timestamptz.
+//   · Status       — Postgres enums, never raw strings.
+//   · Cascades     — Restrict by default; Cascade only from the user root.
+//   · Naming       — @@map to snake_case.
+//
+// Five things this schema cannot express live in hand-written SQL appended to
+// the initial migration — partial unique indexes, one-active-schedule,
+// the notes tsvector, check constraints, and RLS deny-all. See §6 and
+// prisma/migrations/*/migration.sql.
+
+// Prisma 7 moved the connection URL out of the schema and into
+// prisma.config.ts, and requires a driver adapter on the client. The system
+// design's snippet (§3.1) predates that change; the models below are
+// unchanged from it.
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Core / identity (§3.1)
+// ---------------------------------------------------------------------------
+
+enum Theme {
+  PAPER
+  DARK
+}
+
+enum Density {
+  COMFORTABLE
+  COMPACT
+}
+
+/// Mirrors Supabase auth.users. `id` IS the Supabase auth UID — never generated.
+model User {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  email String @unique
+
+  profile       Profile?
+  settings      UserSettings?
+  vaultSettings VaultSettings?
+
+  calendarCategories  CalendarCategory[]
+  calendarEvents      CalendarEvent[]
+  tasks               Task[]
+  notes               Note[]
+  journalEntries      JournalEntry[]
+  habits              Habit[]
+  habitSchedules      HabitSchedule[]
+  habitLogs           HabitLog[]
+  accounts            Account[]
+  transactionCategories TransactionCategory[]
+  transactions        Transaction[]
+  budgetGroups        BudgetGroup[]
+  budgets             Budget[]
+  recurringIncomes    RecurringIncome[]
+  debts               Debt[]
+  trips               Trip[]
+  itineraryStops      ItineraryStop[]
+  vaultItems          VaultItem[]
+  vaultAuditEvents    VaultAuditEvent[]
+
+  @@map("users")
+}
+
+/// Product spec §12.1. Age is DERIVED from birthday at render, never stored.
+model Profile {
+  id        String   @id @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  name         String
+  pronouns     String?
+  birthday     DateTime? @db.Date
+  location     String?
+  contactEmail String? @map("contact_email")
+  /// IANA zone. Required — "today" is computed from it, never from the
+  /// server's or the browser's zone (system design §5.1).
+  timezone     String    @default("Asia/Manila")
+  bio          String?
+
+  userId String @unique @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model UserSettings {
+  id        String   @id @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  theme       Theme   @default(PAPER)
+  /// Key into the curated swatch set: blue | green | terracotta | violet.
+  /// The design system's default accent is terracotta.
+  accentColor String  @default("terracotta") @map("accent_color")
+  density     Density @default(COMFORTABLE)
+  /// ISO weekday: 1 = Monday. Required by decision A5 — an N-times-per-week
+  /// habit cannot compute its weekly window without it.
+  weekStartsOn Int    @default(1) @map("week_starts_on")
+  /// ISO 4217. Single-currency in v1, but stored so multi-currency is a
+  /// future feature rather than a migration (decision A10).
+  currency    String  @default("PHP")
+
+  userId String @unique @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+// ---------------------------------------------------------------------------
+// Calendar (§3.2)
+// ---------------------------------------------------------------------------
+
+model CalendarCategory {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  name  String
+  color String
+
+  userId String @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  events CalendarEvent[]
+
+  @@index([userId, deletedAt])
+  @@map("calendar_categories")
+  // Partial unique on (user_id, lower(name)) WHERE deleted_at IS NULL — see migration
+}
+
+model CalendarEvent {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  title String
+  /// A2: a plain date, never a timestamp. This is what stops an untimed event
+  /// from silently becoming 00:00 UTC and sorting first for the wrong reason.
+  eventDate DateTime  @db.Date @map("event_date")
+  /// null = untimed / all-day.
+  startTime DateTime? @db.Time(0) @map("start_time")
+  /// Carries ItineraryStop.location through a push (§3.2).
+  location  String?
+  /// Carries ItineraryStop.note through a push (§3.2).
+  note      String?
+
+  userId String @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Required — product spec §4 forbids uncategorised events.
+  categoryId String           @db.Uuid @map("category_id")
+  category   CalendarCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  /// A7: unique, so re-pushing an itinerary upserts instead of duplicating.
+  sourceStopId String?        @unique @db.Uuid @map("source_stop_id")
+  sourceStop   ItineraryStop? @relation(fields: [sourceStopId], references: [id], onDelete: Restrict)
+
+  @@index([userId, eventDate])
+  @@index([categoryId])
+  @@map("calendar_events")
+}
+
+// ---------------------------------------------------------------------------
+// Tasks (§3.3)
+// ---------------------------------------------------------------------------
+
+enum TaskBucket {
+  TODAY
+  THIS_WEEK
+  SOMEDAY
+}
+
+model Task {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  title  String
+  bucket TaskBucket
+  /// A3: a timestamp rather than a boolean, which gives the 7-day
+  /// auto-collapse rule for free and never auto-deletes.
+  completedAt DateTime? @map("completed_at")
+  sortOrder   Int       @default(0) @map("sort_order")
+
+  userId String @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, bucket, sortOrder])
+  @@map("tasks")
+}
+
+// ---------------------------------------------------------------------------
+// Notes & Journal (§3.4)
+// ---------------------------------------------------------------------------
+
+model Note {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  /// Empty allowed; the UI renders "Untitled" (product spec §6).
+  title    String   @default("")
+  tag      String?
+  noteDate DateTime @db.Date @map("note_date")
+  /// Raw markdown — the stored form. Never rendered HTML: round-tripping
+  /// through HTML is where formatting fidelity gets lost (§3.4).
+  body     String
+
+  userId String @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, deletedAt, noteDate])
+  @@index([userId, tag])
+  @@map("notes")
+  // tsvector generated column + GIN index — see migration
+}
+
+model JournalEntry {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  entryDate DateTime @db.Date @map("entry_date")
+  body      String
+
+  userId String @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// A4: an index, deliberately NOT unique — multiple entries per date are
+  /// allowed. A unique constraint would create an error state in a calm app.
+  @@index([userId, entryDate])
+  @@map("journal_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Habits (§3.5) — highest complexity. Implements decision A6.
+// ---------------------------------------------------------------------------
+
+enum HabitTimeSlot {
+  MORNING
+  AFTERNOON
+  EVENING
+  ANYTIME
+}
+
+enum HabitCadenceType {
+  DAILY
+  WEEKDAYS
+  TIMES_PER_WEEK
+  INTERVAL
+}
+
+enum HabitCompletion {
+  BINARY
+  COUNT
+}
+
+enum HabitLogStatus {
+  LOGGED
+  SKIPPED
+}
+
+/// Identity only. Cadence and target live in HabitSchedule so that changing
+/// them never silently reinterprets past logs (product spec §8).
+model Habit {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  /// Soft-remove that keeps history (product spec §8). Distinct from deletedAt.
+  archivedAt DateTime? @map("archived_at")
+
+  name     String
+  color    String
+  timeSlot HabitTimeSlot @default(ANYTIME) @map("time_slot")
+
+  userId String @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  schedules HabitSchedule[]
+  logs      HabitLog[]
+
+  @@index([userId, archivedAt, deletedAt])
+  @@map("habits")
+}
+
+/// The versioning table. Exactly one row per habit has effectiveTo = null.
+model HabitSchedule {
+  id        String   @id @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  cadenceType HabitCadenceType @map("cadence_type")
+  /// ISO 1–7. Used only when WEEKDAYS. A native Postgres array rather than a
+  /// join table: at most seven small integers, on the hottest query in the app.
+  weekdays       Int[]           @default([])
+  timesPerWeek   Int? @map("times_per_week")
+  intervalDays   Int? @map("interval_days")
+  anchorDate     DateTime?       @db.Date @map("anchor_date")
+  completionType HabitCompletion @default(BINARY) @map("completion_type")
+  targetValue    Decimal?        @db.Decimal(10, 2) @map("target_value")
+  unit           String?
+
+  effectiveFrom DateTime  @db.Date @map("effective_from")
+  /// null = currently active.
+  effectiveTo   DateTime? @db.Date @map("effective_to")
+
+  userId  String @db.Uuid @map("user_id")
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  habitId String @db.Uuid @map("habit_id")
+  habit   Habit  @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
+  logs HabitLog[]
+
+  @@unique([habitId, effectiveFrom])
+  @@index([habitId, effectiveFrom, effectiveTo])
+  @@map("habit_schedules")
+  // Partial unique on (habit_id) WHERE effective_to IS NULL — see migration
+}
+
+/// The absence of a row means "not done". Only LOGGED and SKIPPED are
+/// recorded, which is what gives the skip-vs-not-done distinction meaning.
+/// Streaks and due-dates are never stored — they are derived by the engine.
+model HabitLog {
+  id        String   @id @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  logDate DateTime       @db.Date @map("log_date")
+  status  HabitLogStatus @default(LOGGED)
+  /// null for BINARY habits.
+  value   Decimal?       @db.Decimal(10, 2)
+
+  /// A6 snapshots. Historical display reads these, never the live schedule —
+  /// this is what stops a retarget from recolouring old days as failures.
+  targetSnapshot Decimal? @db.Decimal(10, 2) @map("target_snapshot")
+  unitSnapshot   String? @map("unit_snapshot")
+
+  userId     String        @db.Uuid @map("user_id")
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  habitId    String        @db.Uuid @map("habit_id")
+  habit      Habit         @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  /// The schedule in effect on logDate. This double link is what makes A6 work.
+  scheduleId String        @db.Uuid @map("schedule_id")
+  schedule   HabitSchedule @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+
+  @@unique([habitId, logDate])
+  @@index([userId, logDate])
+  @@map("habit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Finance (§3.6)
+// ---------------------------------------------------------------------------
+
+enum AccountKind {
+  CASH
+  EWALLET
+  BANK
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum BudgetPeriod {
+  MONTHLY
+  CUSTOM
+}
+
+enum DebtDirection {
+  OWED_TO_ME
+  I_OWE
+}
+
+enum IncomeCadence {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+/// Balance is DERIVED: openingBalance + SUM(transactions.amount). Storing a
+/// running balance means every backdated edit must cascade-recompute, and any
+/// missed path produces a wrong number the user will trust.
+model Account {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  name           String
+  kind           AccountKind
+  openingBalance Decimal     @default(0) @db.Decimal(14, 2) @map("opening_balance")
+  currency       String      @default("PHP")
+  lastUsedAt     DateTime? @map("last_used_at")
+
+  userId String @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  transactions Transaction[]
+
+  @@index([userId, deletedAt])
+  @@map("accounts")
+  // Partial unique on (user_id, lower(name)) WHERE deleted_at IS NULL — see migration
+}
+
+model TransactionCategory {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  name  String
+  color String
+
+  userId String @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  transactions Transaction[]
+  budgets      Budget[]
+
+  @@index([userId, deletedAt])
+  @@map("transaction_categories")
+}
+
+model Transaction {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  name       String
+  occurredOn DateTime        @db.Date @map("occurred_on")
+  /// Signed: negative = outflow.
+  amount     Decimal         @db.Decimal(14, 2)
+  currency   String          @default("PHP")
+  type       TransactionType
+
+  /// G1: pairs the two legs of a transfer. Both legs share this id, both are
+  /// type TRANSFER with categoryId null, and both are written in one DB
+  /// transaction. Budget and category reporting exclude type = TRANSFER.
+  transferGroupId String? @db.Uuid @map("transfer_group_id")
+
+  userId String @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Restrict is what enforces "never silently orphan transaction history".
+  accountId  String  @db.Uuid @map("account_id")
+  account    Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  categoryId String? @db.Uuid @map("category_id")
+  category   TransactionCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([userId, occurredOn])
+  @@index([accountId])
+  @@index([categoryId])
+  @@index([transferGroupId])
+  @@map("transactions")
+}
+
+model BudgetGroup {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  name      String
+  sortOrder Int    @default(0) @map("sort_order")
+
+  userId String @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  budgets Budget[]
+
+  @@index([userId, deletedAt])
+  @@map("budget_groups")
+}
+
+model Budget {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  limitAmount Decimal      @db.Decimal(14, 2) @map("limit_amount")
+  period      BudgetPeriod @default(MONTHLY)
+  /// Both required when period is CUSTOM — enforced by a check constraint.
+  periodStart DateTime?    @db.Date @map("period_start")
+  periodEnd   DateTime?    @db.Date @map("period_end")
+
+  userId     String              @db.Uuid @map("user_id")
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId String              @db.Uuid @map("category_id")
+  category   TransactionCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  groupId    String?             @db.Uuid @map("group_id")
+  group      BudgetGroup?        @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  @@index([userId, deletedAt])
+  @@index([groupId])
+  @@map("budgets")
+}
+
+model RecurringIncome {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  name    String
+  amount  Decimal       @db.Decimal(14, 2)
+  cadence IncomeCadence @default(MONTHLY)
+  nextOn  DateTime      @db.Date @map("next_on")
+
+  userId String @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, deletedAt])
+  @@map("recurring_incomes")
+}
+
+model Debt {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  direction  DebtDirection
+  personName String @map("person_name")
+  amount     Decimal       @db.Decimal(14, 2)
+  note       String?
+  /// A nullable timestamp, not a boolean — makes unsettling a mis-click
+  /// trivially reversible and records when it happened (product spec §9).
+  settledAt  DateTime? @map("settled_at")
+
+  userId String @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, direction, settledAt])
+  @@map("debts")
+}
+
+// ---------------------------------------------------------------------------
+// Itinerary (§3.7)
+// ---------------------------------------------------------------------------
+
+model Trip {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  placeName String @map("place_name")
+  startDate DateTime @db.Date @map("start_date")
+  endDate   DateTime @db.Date @map("end_date")
+
+  userId String @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  stops ItineraryStop[]
+
+  @@index([userId, startDate])
+  @@map("trips")
+}
+
+model ItineraryStop {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  /// A8: an absolute date. "Day 2" is derived, the same way age is derived
+  /// from birthday. Storing dayIndex creates the remapping problem the
+  /// product spec flags when a trip is shortened.
+  stopDate  DateTime  @db.Date @map("stop_date")
+  /// null = untimed.
+  startTime DateTime? @db.Time(0) @map("start_time")
+  activity  String
+  location  String?
+  note      String?
+  sortOrder Int       @default(0) @map("sort_order")
+
+  userId String @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tripId String @db.Uuid @map("trip_id")
+  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  /// Orphan detection is derived, not stored: an event is orphaned when its
+  /// sourceStop is soft-deleted or falls outside the trip's current dates.
+  pushedEvent CalendarEvent?
+
+  @@index([tripId, stopDate, sortOrder])
+  @@map("itinerary_stops")
+}
+
+// ---------------------------------------------------------------------------
+// Vault (§3.8) — deliberately almost empty. See §4 for why.
+// ---------------------------------------------------------------------------
+
+enum VaultUnlockMethod {
+  PIN
+  MASTER_PASSWORD
+  BOTH
+}
+
+enum VaultAuditAction {
+  UNLOCK_SUCCESS
+  UNLOCK_FAILURE
+  ITEM_REVEALED
+  ITEM_DELETED
+  KEY_ROTATED
+}
+
+/// Envelope encryption: the master password derives a KEK via Argon2id, which
+/// wraps a random DEK, which encrypts the items. Changing the master password
+/// is therefore an O(1) rewrap rather than re-encrypting every item.
+model VaultSettings {
+  id        String   @id @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  kdfSalt        Bytes @map("kdf_salt")
+  kdfMemoryKiB   Int   @default(65536) @map("kdf_memory_kib")
+  kdfIterations  Int   @default(3) @map("kdf_iterations")
+  kdfParallelism Int   @default(1) @map("kdf_parallelism")
+
+  /// DEK encrypted under the password-derived KEK.
+  wrappedDek    Bytes @map("wrapped_dek")
+  wrappedDekIv  Bytes @map("wrapped_dek_iv")
+  /// DEK wrapped under the one-time recovery kit (G3). Not recoverable by
+  /// the server — a vault the server can recover is a vault it can read.
+  recoveryDek   Bytes? @map("recovery_dek")
+  recoveryDekIv Bytes? @map("recovery_dek_iv")
+  /// A known plaintext encrypted under the KEK. Decrypting it proves the
+  /// entered password was correct without the server learning either.
+  verifier      Bytes
+  verifierIv    Bytes @map("verifier_iv")
+
+  unlockMethod    VaultUnlockMethod @default(MASTER_PASSWORD) @map("unlock_method")
+  lockOnLoad      Boolean           @default(true) @map("lock_on_load")
+  autoLockSeconds Int               @default(300) @map("auto_lock_seconds")
+  keyVersion      Int               @default(1) @map("key_version")
+
+  userId String @unique @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("vault_settings")
+}
+
+/// A sealed blob. AES-GCM covers the ENTIRE record — site, username,
+/// password, url, notes, category — so the server learns only that the user
+/// has N items (§4.1). All search and filtering is therefore client-side.
+model VaultItem {
+  id        String    @id @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  ciphertext Bytes
+  iv         Bytes
+  keyVersion Int   @default(1) @map("key_version")
+
+  userId String @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, deletedAt])
+  @@map("vault_items")
+}
+
+model VaultAuditEvent {
+  id        String   @id @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  action VaultAuditAction
+  /// No FK — the audit trail must survive deletion of the item it describes.
+  itemId    String? @db.Uuid @map("item_id")
+  ipHash    String? @map("ip_hash")
+  userAgent String? @map("user_agent")
+
+  userId String @db.Uuid @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("vault_audit_events")
+}

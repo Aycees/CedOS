@@ -1,0 +1,102 @@
+/*
+ * Ced OS design tokens.
+ *
+ * Surfaces, accents, radii and spacing are transcribed verbatim from
+ * design-reference/tokens/{colors,spacing}.css — the extracted design system.
+ * Do not edit a value here without changing the design reference too.
+ *
+ * Three orthogonal axes are stamped on <html> and multiply together:
+ *   [data-theme]   paper (default) | dark      → surface palette
+ *   [data-accent]  blue | green | terracotta | violet  → --accent-default
+ *   [data-density] comfortable | compact       → --row-pad
+ *
+ * Every surface in the app reads these variables rather than literal values,
+ * which is what makes theme/accent/density changes apply instantly and
+ * platform-wide, including inside an open modal (product spec §12).
+ */
+
+:root {
+  /* paper (default/light) theme surfaces */
+  --bg: #f0eade;
+  --sidebar: #e8e0d1;
+  --card: #fbf8f2;
+  --border: rgba(38, 35, 30, 0.13);
+  --border-strong: rgba(38, 35, 30, 0.3);
+  --text: #262320;
+  --muted: #918876;
+  --dot: rgba(38, 35, 30, 0.15);
+  --checkbox: rgba(38, 35, 30, 0.3);
+  --on-dark: #fbf8f2;
+  --overlay: rgba(38, 35, 30, 0.28);
+  --shadow-modal: 0 24px 60px rgba(38, 35, 30, 0.22);
+  --hairline: rgba(38, 35, 30, 0.16);
+
+  /* accents — the 4-value brand set plus the wider 8-value category set */
+  --accent-blue: #4a6fa5;
+  --accent-green: #4a8464;
+  --accent-terracotta: #a8664a;
+  --accent-violet: #7a5ea8;
+  --accent-red: #b2453a;
+  --accent-warmgray: #8c8371;
+  --accent-sky: #5e8aa8;
+  --accent-mauve: #a87a9e;
+  --accent-default: var(--accent-terracotta);
+
+  /* radii */
+  --radius-card: 12px;
+  --radius-modal: 14px;
+  --radius-control: 9px;
+  --radius-input: 8px;
+  --radius-pill: 20px;
+
+  /* spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* density — the one built-in layout tweak (design-reference/readme.md) */
+  --density-comfortable: 11px;
+  --density-compact: 7px;
+  --row-pad: var(--density-comfortable);
+}
+
+[data-theme="dark"] {
+  --bg: #232220;
+  --sidebar: #2a2926;
+  --card: #2f2e2b;
+  --border: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.3);
+  --text: #f2eee4;
+  --muted: #ada895;
+  --dot: rgba(255, 255, 255, 0.1);
+  --checkbox: rgba(255, 255, 255, 0.38);
+  --on-dark: #232220;
+  --overlay: rgba(0, 0, 0, 0.5);
+  --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.45);
+  --hairline: rgba(255, 255, 255, 0.14);
+}
+
+/* One accent is active at a time, chosen from the fixed 4-color brand set. */
+[data-accent="blue"] {
+  --accent-default: var(--accent-blue);
+}
+[data-accent="green"] {
+  --accent-default: var(--accent-green);
+}
+[data-accent="terracotta"] {
+  --accent-default: var(--accent-terracotta);
+}
+[data-accent="violet"] {
+  --accent-default: var(--accent-violet);
+}
+
+/* Density scales list-row padding sitewide. */
+[data-density="comfortable"] {
+  --row-pad: var(--density-comfortable);
+}
+[data-density="compact"] {
+  --row-pad: var(--density-compact);
+}

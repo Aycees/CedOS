@@ -1,11 +1,9 @@
 import { expect, test as setup, type Page } from "@playwright/test";
 
+import { E2E_EMAIL, E2E_PASSWORD } from "./account";
 import { resetE2EData } from "./reset";
 
 const AUTH_FILE = "tests/e2e/.auth/user.json";
-
-export const E2E_EMAIL = "e2e@ced.local";
-export const E2E_PASSWORD = "e2e-local-password";
 
 /**
  * Signs the suite in once and reuses the session.

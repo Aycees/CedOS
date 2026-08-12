@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 
 import { getSession } from "@/core/auth/session";
-import { today, formatSidebarDate } from "@/core/date";
+import { today, todayIso, formatSidebarDate } from "@/core/date";
+import { countTodayEvents } from "@/modules/calendar/service";
+import { countDueToday } from "@/modules/habits/service";
 import { countOpenTasks } from "@/modules/tasks/service";
 import { AppearanceProvider } from "@/core/theme/appearance-provider";
 import { Sidebar } from "@/core/ui/sidebar";
@@ -22,7 +24,11 @@ export default async function AppLayout({
   const session = await getSession();
   if (!session) redirect("/sign-in");
 
-  const openTasks = await countOpenTasks(session.userId);
+  const [openTasks, todayEvents, habitsDue] = await Promise.all([
+    countOpenTasks(session.userId),
+    countTodayEvents(session.userId, session.timezone),
+    countDueToday(session.userId, todayIso(session.timezone), session.weekStartsOn),
+  ]);
 
   return (
     <AppearanceProvider
@@ -45,7 +51,7 @@ export default async function AppLayout({
         <Sidebar
           name={session.name}
           dateLabel={formatSidebarDate(today(session.timezone))}
-          badges={{ openTasks }}
+          badges={{ openTasks, todayEvents, habitsDue }}
         />
         <main className="flex min-w-0 flex-1 flex-col">{children}</main>
       </div>

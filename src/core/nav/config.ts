@@ -27,7 +27,7 @@ export type NavGroup = {
 export const NAV: NavGroup[] = [
   {
     label: null,
-    items: [{ label: "Home", href: "/", badge: "todayEvents", built: false }],
+    items: [{ label: "Home", href: "/", badge: "todayEvents", built: true }],
   },
   {
     label: "Plan",

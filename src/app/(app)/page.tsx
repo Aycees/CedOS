@@ -1,83 +1,72 @@
-import Link from "next/link";
-
 import { requireSession } from "@/core/auth/session";
-import { formatHeaderDate, today } from "@/core/date";
-import { Card } from "@/core/ui/card";
+import { formatHeaderDate, today, todayIso as todayIsoOf } from "@/core/date";
+import { add } from "@/core/money";
 import { PageHeader } from "@/core/ui/page-header";
+import { listCategories, listTodayEvents } from "@/modules/calendar/service";
+import { listBudgets } from "@/modules/finance/service";
+import { habitSummary } from "@/modules/habits/service";
+import { GlanceStrip } from "@/modules/home/ui/glance-strip";
+import { QuickActions } from "@/modules/home/ui/quick-actions";
+import { TaskSnapshot } from "@/modules/home/ui/task-snapshot";
+import { TodaySchedule } from "@/modules/home/ui/today-schedule";
+import { listTrips } from "@/modules/itinerary/service";
 import { listBuckets } from "@/modules/tasks/service";
 
 /**
- * Home holds no data of its own — it is a live rollup composed from each
- * app's own summary logic (product spec §3).
- *
- * Only the Tasks snapshot is real so far; the schedule and at-a-glance strip
- * fill in as Calendar (phase 3) and Habits (phase 5) land. The full dashboard
- * is phase 9, deliberately last, because it is pure composition.
+ * Home holds no data of its own (product spec §3) — every number here comes
+ * from the owning module's own summary function. This file only fetches in
+ * parallel and lays the results out; it never queries Prisma itself.
  */
 export default async function Home() {
   const session = await requireSession();
-  const buckets = await listBuckets(session.userId, session.timezone);
-  const todayBucket = buckets.find((bucket) => bucket.bucket === "TODAY");
-  const open = todayBucket?.tasks.filter((task) => !task.completedAt) ?? [];
+  const todayIso = todayIsoOf(session.timezone);
+  const month = todayIso.slice(0, 7);
+
+  const [buckets, events, categories, habits, budgets, trips] = await Promise.all([
+    listBuckets(session.userId, session.timezone),
+    listTodayEvents(session.userId, session.timezone),
+    listCategories(session.userId),
+    habitSummary(session.userId, todayIso, session.weekStartsOn),
+    listBudgets(session.userId, month),
+    listTrips(session.userId),
+  ]);
+
+  const todayBucket = buckets.find((bucket) => bucket.bucket === "TODAY")!;
+
+  const allBudgets = [...budgets.groups.flatMap((group) => group.budgets), ...budgets.ungrouped];
+  const budgetTotals =
+    allBudgets.length === 0
+      ? null
+      : {
+          limit: add(...allBudgets.map((b) => b.limitAmount)).toString(),
+          spent: add(...allBudgets.map((b) => b.spent)).toString(),
+        };
+
+  const nextTrip =
+    trips
+      .filter((trip) => trip.endDate >= todayIso)
+      .sort((a, b) => a.startDate.localeCompare(b.startDate))[0] ?? null;
 
   return (
     <>
       <PageHeader
         kicker={formatHeaderDate(today(session.timezone))}
         title="Today"
+        actions={<QuickActions categories={categories} todayIso={todayIso} />}
       />
 
       <div className="flex-1 overflow-auto">
         <div className="grid max-w-[1040px] grid-cols-1 items-start gap-[22px] p-8 lg:grid-cols-[1.3fr_1fr]">
-          <Card>
-            <div className="mb-1 flex items-baseline gap-2.5">
-              <h2 className="m-0 font-serif text-[18px] font-normal">
-                Today&rsquo;s schedule
-              </h2>
-              <Link
-                href="/calendar"
-                className="ml-auto font-mono text-[11.5px] text-accent-blue"
-              >
-                open calendar →
-              </Link>
-            </div>
-            {/* Calm empty state, never a blank void (product spec §3). */}
-            <p className="m-0 py-3 font-serif text-[15px] italic text-muted">
-              nothing on the calendar today
-            </p>
-          </Card>
-
-          <Card>
-            <div className="mb-2.5 flex items-baseline gap-2.5">
-              <h2 className="m-0 font-serif text-[18px] font-normal">Tasks</h2>
-              <Link
-                href="/tasks"
-                className="ml-auto font-mono text-[11.5px] text-accent-blue"
-              >
-                all →
-              </Link>
-            </div>
-
-            {open.length === 0 ? (
-              <p className="m-0 py-1.5 font-serif text-[15px] italic text-muted">
-                no tasks for today
-              </p>
-            ) : (
-              open.map((task) => (
-                <div
-                  key={task.id}
-                  className="list-row flex items-start gap-2.5 font-mono text-[13px]"
-                >
-                  <span
-                    aria-hidden
-                    className="mt-0.5 size-[15px] flex-none rounded-[4px] border-[1.5px] border-checkbox"
-                  />
-                  {task.title}
-                </div>
-              ))
-            )}
-          </Card>
+          <TodaySchedule events={events} categories={categories} />
+          <TaskSnapshot initial={todayBucket} />
         </div>
+
+        <GlanceStrip
+          habitsDue={Math.max(0, habits.dueToday - habits.doneToday)}
+          budget={budgetTotals}
+          nextTrip={nextTrip}
+          currency={session.currency}
+        />
       </div>
     </>
   );

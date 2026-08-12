@@ -41,7 +41,7 @@ export function JournalPage({
         <EmptyState
           line="no entries yet"
           action={
-            <Button variant="dashed" onClick={() => setCreating(true)}>
+            <Button variant="dashed" className="w-full" onClick={() => setCreating(true)}>
               + write today&rsquo;s entry
             </Button>
           }

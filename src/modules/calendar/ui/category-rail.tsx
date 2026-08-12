@@ -81,7 +81,7 @@ export function CategoryRail({
         })
       )}
 
-      <Button variant="dashed" className="mt-3" onClick={() => setCreating(true)}>
+      <Button variant="dashed" className="mt-3 w-full" onClick={() => setCreating(true)}>
         + new calendar
       </Button>
 

@@ -110,7 +110,7 @@ function TodayView({
       <EmptyState
         line="nothing due today"
         action={
-          <Button variant="dashed" onClick={onNew}>
+          <Button variant="dashed" className="w-full" onClick={onNew}>
             + new habit
           </Button>
         }

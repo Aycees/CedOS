@@ -86,7 +86,7 @@ export function NotesPage({
           line={query.trim() ? "no notes match" : "no notes yet"}
           action={
             query.trim() ? undefined : (
-              <Button variant="dashed" onClick={() => setCreating(true)}>
+              <Button variant="dashed" className="w-full" onClick={() => setCreating(true)}>
                 + write your first note
               </Button>
             )

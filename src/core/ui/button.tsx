@@ -20,7 +20,14 @@ const VARIANTS: Record<ButtonVariant, string> = {
   solid: "bg-accent text-on-dark",
   outline: "border border-border text-text",
   ghost: "text-accent",
-  dashed: "border border-dashed border-border-strong text-muted text-left rounded-[8px] w-full",
+  /*
+   * Not `w-full`: a dashed prompt is sometimes a full-width block (an empty
+   * state) and sometimes a tile sitting among others (the account row in
+   * Money). Two Tailwind width utilities have equal specificity, so a
+   * variant-level `w-full` cannot be overridden from the call site — it has
+   * to be opted into instead.
+   */
+  dashed: "border border-dashed border-border-strong text-muted text-left rounded-[8px]",
 };
 
 const SIZES: Record<ButtonSize, string> = {

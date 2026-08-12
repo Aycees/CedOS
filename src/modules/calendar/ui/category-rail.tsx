@@ -3,7 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { AppError } from "@/core/errors";
+import { AppError, userMessage } from "@/core/errors";
 import { newId } from "@/core/ids";
 import { api } from "@/core/mutation/client";
 import { Button } from "@/core/ui/button";
@@ -125,7 +125,7 @@ function CategoryModal({
         ? api.patch("/api/calendar/categories", { id: category.id, name, color })
         : api.post("/api/calendar/categories", { id: newId(), name, color }),
     onSuccess: done,
-    onError: (e) => setError(e instanceof AppError ? e.message : "That didn't save."),
+    onError: (e) => setError(userMessage(e, "That didn't save.")),
   });
 
   /*

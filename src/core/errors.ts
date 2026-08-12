@@ -100,6 +100,31 @@ export function validationError(error: z.ZodError): AppError {
   );
 }
 
+/**
+ * The message to actually show a person.
+ *
+ * A VALIDATION_ERROR's own message is deliberately generic ("Some fields need
+ * attention") because the useful text lives in `details`, keyed by field —
+ * that shape exists so React Hook Form can call `setError` per field. A modal
+ * showing a single line would otherwise render the generic sentence and hide
+ * the specific one, which is how "the trip cannot end before it starts"
+ * becomes invisible.
+ */
+export function userMessage(error: unknown, fallback = "That didn't save."): string {
+  if (!(error instanceof AppError)) return fallback;
+
+  // Only VALIDATION_ERROR has a deliberately generic message. Every other
+  // code already carries the specific sentence — a CONFLICT says "you already
+  // have a calendar called Work", which beats its terser field detail.
+  if (error.code !== "VALIDATION_ERROR") return error.message;
+
+  const firstDetail = Object.values(error.details ?? {})
+    .flat()
+    .find((message) => message.trim().length > 0);
+
+  return firstDetail ?? error.message;
+}
+
 export function isApiError(value: unknown): value is ApiError {
   return (
     typeof value === "object" &&

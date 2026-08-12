@@ -3,7 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { AppError } from "@/core/errors";
+import { AppError, userMessage } from "@/core/errors";
 import { newId } from "@/core/ids";
 import { formatMoney } from "@/core/money";
 import { api } from "@/core/mutation/client";
@@ -65,7 +65,7 @@ export function AccountModal({
             openingBalance: opening || "0",
           }),
     onSuccess: done,
-    onError: (e) => setError(e instanceof AppError ? e.message : "That didn't save."),
+    onError: (e) => setError(userMessage(e, "That didn't save.")),
   });
 
   const attemptDelete = useMutation({
@@ -81,7 +81,7 @@ export function AccountModal({
       }
       // Includes "you need at least one account", which is blocked outright
       // rather than offered as a choice (product spec §9).
-      setError(e instanceof AppError ? e.message : "That could not be deleted.");
+      setError(userMessage(e, "That could not be deleted."));
     },
   });
 
@@ -248,7 +248,7 @@ export function TransactionModal({
         : api.post("/api/finance/transactions", { id: newId(), ...payload });
     },
     onSuccess: done,
-    onError: (e) => setError(e instanceof AppError ? e.message : "That didn't save."),
+    onError: (e) => setError(userMessage(e, "That didn't save.")),
   });
 
   const remove = useMutation({
@@ -637,7 +637,7 @@ export function BudgetModal({
       void invalidateFinance(queryClient);
       onClose();
     },
-    onError: (e) => setError(e instanceof AppError ? e.message : "That didn't save."),
+    onError: (e) => setError(userMessage(e, "That didn't save.")),
   });
 
   return (

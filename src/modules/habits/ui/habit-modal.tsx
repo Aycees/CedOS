@@ -3,7 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { AppError } from "@/core/errors";
+import { userMessage } from "@/core/errors";
 import { newId } from "@/core/ids";
 import { api } from "@/core/mutation/client";
 import { Button } from "@/core/ui/button";
@@ -92,7 +92,7 @@ export function HabitModal({
             cadence,
           }),
     onSuccess: done,
-    onError: (e) => setError(e instanceof AppError ? e.message : "That didn't save."),
+    onError: (e) => setError(userMessage(e, "That didn't save.")),
   });
 
   const archive = useMutation({

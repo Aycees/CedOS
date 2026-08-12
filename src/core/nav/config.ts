@@ -53,7 +53,7 @@ export const NAV: NavGroup[] = [
   },
   {
     label: "Secure",
-    items: [{ label: "Vault", href: "/vault", built: false }],
+    items: [{ label: "Vault", href: "/vault", built: true }],
   },
 ];
 

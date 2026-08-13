@@ -49,6 +49,12 @@ function TaskSection({ bucket }: { bucket: BucketView }) {
     onSuccess: invalidate,
   });
 
+  const rename = useMutation({
+    mutationFn: (input: { id: string; title: string }) =>
+      api.patch("/api/tasks", input),
+    onSuccess: invalidate,
+  });
+
   // A3: completed items stay visible and struck through, but fold behind a
   // toggle once they are more than 7 days old. Nothing is ever auto-deleted.
   const visible = bucket.tasks.filter((task) => !task.collapsed);
@@ -73,6 +79,7 @@ function TaskSection({ bucket }: { bucket: BucketView }) {
           task={task}
           onToggle={() => toggle.mutate(task)}
           onRemove={() => remove.mutate(task.id)}
+          onRename={(title) => rename.mutate({ id: task.id, title })}
         />
       ))}
 
@@ -92,6 +99,7 @@ function TaskSection({ bucket }: { bucket: BucketView }) {
                 task={task}
                 onToggle={() => toggle.mutate(task)}
                 onRemove={() => remove.mutate(task.id)}
+                onRename={(title) => rename.mutate({ id: task.id, title })}
               />
             ))}
         </>
@@ -114,15 +122,29 @@ function TaskRow({
   task,
   onToggle,
   onRemove,
+  onRename,
 }: {
   task: TaskView;
   onToggle: () => void;
   onRemove: () => void;
+  onRename: (title: string) => void;
 }) {
   const done = Boolean(task.completedAt);
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(task.title);
+
+  const commit = () => {
+    setEditing(false);
+    const trimmed = value.trim();
+    if (trimmed && trimmed !== task.title) {
+      onRename(trimmed);
+    } else {
+      setValue(task.title);
+    }
+  };
 
   return (
-    <div className="row-divider list-row group flex items-start gap-2.5">
+    <div className="row-divider list-row flex items-start gap-2.5">
       <button
         type="button"
         role="checkbox"
@@ -137,20 +159,54 @@ function TaskRow({
         {done ? <span className="font-mono text-[9px] leading-none">✓</span> : null}
       </button>
 
-      <span
-        className={cn(
-          "min-w-0 flex-1 font-mono text-[13px]",
-          done && "text-muted line-through",
-        )}
-      >
-        {task.title}
-      </span>
+      {editing ? (
+        <input
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.currentTarget.blur();
+            } else if (e.key === "Escape") {
+              setValue(task.title);
+              setEditing(false);
+            }
+          }}
+          aria-label="Task title"
+          className="min-w-0 flex-1 bg-transparent font-mono text-[13px] text-text outline-none"
+        />
+      ) : (
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label={`Rename ${task.title}`}
+          onClick={() => {
+            setValue(task.title);
+            setEditing(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setValue(task.title);
+              setEditing(true);
+            }
+          }}
+          className={cn(
+            "min-w-0 flex-1 font-mono text-[13px]",
+            done && "text-muted line-through",
+          )}
+        >
+          {task.title}
+        </span>
+      )}
 
       <button
         type="button"
         aria-label={`Remove ${task.title}`}
         onClick={onRemove}
-        className="flex-none font-mono text-[11px] text-muted opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:focus:opacity-100"
+        className="flex-none font-mono text-[11px] text-muted"
       >
         ×
       </button>

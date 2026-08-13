@@ -40,7 +40,7 @@ export function Modal({
           className={cn(
             "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2",
             "max-h-[88vh] overflow-y-auto rounded-modal border border-border",
-            "bg-card px-[26px] py-6 shadow-dialog",
+            "bg-card px-6.5 py-6 shadow-dialog",
           )}
         >
           {kicker ? <div className="kicker mb-2.5">{kicker}</div> : null}

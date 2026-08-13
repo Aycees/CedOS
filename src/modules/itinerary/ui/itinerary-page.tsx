@@ -32,7 +32,7 @@ export function ItineraryPage({
   });
 
   return (
-    <div className="max-w-[760px] p-8">
+    <div className="max-w-190 p-8">
       <Button className="mb-5" onClick={() => setCreating(true)}>
         + new trip
       </Button>
@@ -52,7 +52,7 @@ export function ItineraryPage({
             <Card key={trip.id} className="p-0">
               <Link
                 href={`/itinerary/${trip.id}`}
-                className="block px-[22px] py-5"
+                className="block px-5.5 py-5"
                 aria-label={`Open ${trip.placeName}`}
               >
                 <div className="kicker">

@@ -106,7 +106,7 @@ export function CalendarPage({
           >
             ‹
           </button>
-          <div className="min-w-[150px] font-mono text-[12.5px]">
+          <div className="min-w-37.5 font-mono text-[12.5px]">
             {cursor.toFormat("LLLL yyyy")}
           </div>
           <button
@@ -231,7 +231,7 @@ function MonthGrid({
             <div
               key={iso}
               className={cn(
-                "min-h-[104px] border-b border-r border-border p-2",
+                "min-h-26 border-b border-r border-border p-2",
                 !inMonth && "opacity-40",
               )}
             >
@@ -254,7 +254,7 @@ function MonthGrid({
                   >
                     <span
                       aria-hidden
-                      className="size-[6px] flex-none rounded-full"
+                      className="size-1.5 flex-none rounded-full"
                       style={{ background: `var(--accent-${colorOf(event.categoryId)})` }}
                     />
                     {event.startTime && (
@@ -295,14 +295,14 @@ function AgendaList({
 
   if (dates.length === 0) {
     return (
-      <p className="py-[70px] text-center font-mono text-[12px] text-muted">
+      <p className="py-17.5 text-center font-mono text-[12px] text-muted">
         no events this month
       </p>
     );
   }
 
   return (
-    <div className="max-w-[760px] p-6">
+    <div className="max-w-190 p-6">
       {dates.map((date) => (
         <div key={date} className="mb-5">
           <div className="kicker mb-1.5">
@@ -317,7 +317,7 @@ function AgendaList({
               onClick={() => onPick({ event, date })}
               className="row-divider list-row flex w-full items-baseline gap-3 text-left"
             >
-              <span className="w-[52px] flex-none font-mono text-[12px] text-muted">
+              <span className="w-13 flex-none font-mono text-[12px] text-muted">
                 {event.startTime ?? "all day"}
               </span>
               <span

@@ -11,7 +11,7 @@ import { cn } from "./cn";
  */
 const VARIANTS = {
   boxed:
-    "rounded-input border border-border px-[11px] py-2 font-mono text-[12.5px]",
+    "rounded-input border border-border px-2.75 py-2 font-mono text-[12.5px]",
   ghost: "border-none p-0 font-serif text-[24px] tracking-[-0.015em]",
 } as const;
 

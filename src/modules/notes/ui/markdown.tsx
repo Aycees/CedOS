@@ -31,12 +31,12 @@ export function Markdown({ children }: { children: string }) {
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="mb-2.5 mt-[26px] font-serif text-[22px] font-medium">
+            <h2 className="mb-2.5 mt-6.5 font-serif text-[22px] font-medium">
               {children}
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 className="mb-2 mt-[22px] font-mono text-[14px] font-semibold uppercase tracking-[0.08em] text-muted">
+            <h3 className="mb-2 mt-5.5 font-mono text-[14px] font-semibold uppercase tracking-[0.08em] text-muted">
               {children}
             </h3>
           ),
@@ -68,7 +68,7 @@ export function Markdown({ children }: { children: string }) {
                 <span
                   aria-hidden
                   className={
-                    "mt-[3px] grid size-[15px] flex-none place-items-center rounded-[4px] border-[1.5px] font-mono text-[10px] leading-none " +
+                    "mt-0.75 grid size-3.75 flex-none place-items-center rounded-sm border-[1.5px] font-mono text-[10px] leading-none " +
                     (checked
                       ? "border-accent-green bg-accent-green text-on-dark"
                       : "border-checkbox")
@@ -88,11 +88,11 @@ export function Markdown({ children }: { children: string }) {
             </blockquote>
           ),
           code: ({ children }) => (
-            <code className="rounded-[4px] bg-[color-mix(in_srgb,var(--text)_7%,transparent)] px-1.5 py-[1.5px] font-mono text-[13.5px]">
+            <code className="rounded-sm bg-[color-mix(in_srgb,var(--text)_7%,transparent)] px-1.5 py-[1.5px] font-mono text-[13.5px]">
               {children}
             </code>
           ),
-          hr: () => <hr className="my-[22px] border-0 border-t border-dashed border-border" />,
+          hr: () => <hr className="my-5.5 border-0 border-t border-dashed border-border" />,
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           a: ({ children, href }) => (
             <a href={href} className="text-accent-blue underline">

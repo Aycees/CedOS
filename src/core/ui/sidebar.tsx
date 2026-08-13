@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { createSupabaseBrowserClient } from "@/core/auth/supabase-browser";
 import { NAV, type NavBadges } from "@/core/nav/config";
 import { useAppearance } from "@/core/theme/appearance-provider";
 
@@ -23,11 +24,21 @@ export function Sidebar({
   badges: NavBadges;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [signingOut, setSigningOut] = useState(false);
   const { theme, setAppearance } = useAppearance();
 
+  async function signOut() {
+    setSigningOut(true);
+    await createSupabaseBrowserClient().auth.signOut();
+    // Full navigation so proxy sees the cleared session cookie.
+    window.location.assign("/sign-in");
+    router.refresh();
+  }
+
   return (
-    <aside className="flex w-[216px] flex-none flex-col border-r border-border bg-sidebar">
+    <aside className="flex w-54 flex-none flex-col border-r border-border bg-sidebar">
       <div className="flex items-center gap-2.5 px-5 pb-1 pt-5">
         <div className="font-mono text-[13px] font-medium tracking-[0.02em]">Ced OS</div>
         <button
@@ -35,7 +46,7 @@ export function Sidebar({
           title="Toggle day/night"
           aria-label={theme === "dark" ? "Switch to paper theme" : "Switch to dark theme"}
           onClick={() => setAppearance({ theme: theme === "dark" ? "paper" : "dark" })}
-          className="ml-auto grid size-[26px] place-items-center rounded-[7px] border border-border text-muted"
+          className="ml-auto grid size-6.5 place-items-center rounded-[7px] border border-border text-muted"
         >
           {theme === "dark" ? <MoonGlyph /> : <SunGlyph />}
         </button>
@@ -75,7 +86,7 @@ export function Sidebar({
                       href={item.href}
                       aria-current={active ? "page" : undefined}
                       className={cn(
-                        "flex items-center gap-2.5 rounded-[8px] px-3 py-2.5 font-mono text-[12.5px]",
+                        "flex items-center gap-2.5 rounded-lg px-3 py-2.5 font-mono text-[12.5px]",
                         active
                           ? "bg-[color-mix(in_srgb,var(--text)_6%,transparent)] text-text"
                           : "text-muted",
@@ -100,7 +111,7 @@ export function Sidebar({
           href="/settings"
           aria-current={pathname.startsWith("/settings") ? "page" : undefined}
           className={cn(
-            "flex items-center gap-2.5 rounded-[8px] px-3 py-2.5 font-mono text-[12.5px]",
+            "flex items-center gap-2.5 rounded-lg px-3 py-2.5 font-mono text-[12.5px]",
             pathname.startsWith("/settings")
               ? "bg-[color-mix(in_srgb,var(--text)_6%,transparent)] text-text"
               : "text-muted",
@@ -109,25 +120,34 @@ export function Sidebar({
           <span aria-hidden>⚙</span> Settings
         </Link>
 
-        <Link
-          href="/profile"
-          className="mt-1 flex items-center gap-2.5 border-t border-dashed border-border px-3 pt-3.5"
-        >
-          <span
-            aria-hidden
-            className="grid size-7 flex-none place-items-center rounded-full bg-accent font-mono text-[12px] text-on-dark"
+        <div className="mt-1 flex items-center gap-2.5 border-t border-dashed border-border px-3 pt-3.5">
+          <Link href="/profile" className="flex min-w-0 flex-1 items-center gap-2.5">
+            <span
+              aria-hidden
+              className="grid size-7 flex-none place-items-center rounded-full bg-accent font-mono text-[12px] text-on-dark"
+            >
+              {(name.trim()[0] ?? "?").toUpperCase()}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate font-mono text-[12.5px] text-text">
+                {name.trim() || "Unnamed"}
+              </span>
+              <span className="block font-mono text-[10px] tracking-widest text-muted">
+                {dateLabel}
+              </span>
+            </span>
+          </Link>
+          <button
+            type="button"
+            title="Log out"
+            aria-label="Log out"
+            onClick={signOut}
+            disabled={signingOut}
+            className="grid size-7 flex-none place-items-center rounded-[7px] text-muted disabled:opacity-50"
           >
-            {(name.trim()[0] ?? "?").toUpperCase()}
-          </span>
-          <span className="min-w-0">
-            <span className="block truncate font-mono text-[12.5px] text-text">
-              {name.trim() || "Unnamed"}
-            </span>
-            <span className="block font-mono text-[10px] tracking-[0.1em] text-muted">
-              {dateLabel}
-            </span>
-          </span>
-        </Link>
+            <LogOutGlyph />
+          </button>
+        </div>
       </div>
     </aside>
   );
@@ -169,6 +189,26 @@ function MoonGlyph() {
       aria-hidden
     >
       <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+    </svg>
+  );
+}
+
+function LogOutGlyph() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="M16 17l5-5-5-5" />
+      <path d="M21 12H9" />
     </svg>
   );
 }

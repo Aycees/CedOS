@@ -103,7 +103,7 @@ export function EventModal({
             <select
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+              className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
             >
               <option value="">all day</option>
               {TIMES.map((time) => (
@@ -120,7 +120,7 @@ export function EventModal({
           <select
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
-            className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
           >
             {categories.map((category) => (
               <option key={category.id} value={category.id}>

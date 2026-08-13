@@ -140,7 +140,7 @@ export function AccountModal({
           <select
             value={kind}
             onChange={(e) => setKind(e.target.value as AccountKind)}
-            className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
           >
             {ACCOUNT_KINDS.map((option) => (
               <option key={option} value={option}>
@@ -325,7 +325,7 @@ export function TransactionModal({
             onChange={(e) => setAccountId(e.target.value)}
             disabled={isTransferRow}
             aria-label={mode === "TRANSFER" ? "Transfer from" : "Account"}
-            className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
           >
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
@@ -342,7 +342,7 @@ export function TransactionModal({
               value={toAccountId}
               onChange={(e) => setToAccountId(e.target.value)}
               aria-label="Transfer to"
-              className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+              className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
             >
               {accounts.map((account) => (
                 <option key={account.id} value={account.id}>
@@ -358,7 +358,7 @@ export function TransactionModal({
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
               disabled={isTransferRow}
-              className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+              className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
             >
               <option value="">uncategorised</option>
               {categories.map((category) => (
@@ -654,7 +654,7 @@ export function BudgetModal({
           <select
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
-            className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
           >
             {categories.map((category) => (
               <option key={category.id} value={category.id}>
@@ -678,7 +678,7 @@ export function BudgetModal({
           <select
             value={groupId}
             onChange={(e) => setGroupId(e.target.value)}
-            className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
           >
             <option value="">No group</option>
             {groups.map((group) => (

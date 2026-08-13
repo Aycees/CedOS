@@ -19,7 +19,7 @@ export function TasksPage({ initial }: { initial: BucketView[] }) {
   });
 
   return (
-    <div className="grid max-w-[1040px] grid-cols-1 items-start gap-[22px] p-8 lg:grid-cols-3">
+    <div className="grid max-w-260 grid-cols-1 items-start gap-5.5 p-8 lg:grid-cols-3">
       {buckets.map((bucket) => (
         <BucketCard key={bucket.bucket} bucket={bucket} />
       ))}
@@ -127,7 +127,7 @@ function TaskRow({
         aria-label={done ? `Reopen ${task.title}` : `Complete ${task.title}`}
         onClick={onToggle}
         className={cn(
-          "mt-0.5 grid size-[15px] flex-none place-items-center rounded-[4px] border-[1.5px]",
+          "mt-0.5 grid size-3.75 flex-none place-items-center rounded-sm border-[1.5px]",
           done ? "border-accent bg-accent text-on-dark" : "border-checkbox",
         )}
       >
@@ -189,7 +189,7 @@ function AddTaskInput({
         onBlur={submit}
         placeholder="+ add a task"
         aria-label={`Add a task to ${bucket.toLowerCase().replace("_", " ")}`}
-        className="w-full rounded-[8px] border border-dashed border-border-strong bg-transparent px-2.5 py-2 font-mono text-[12px] text-text outline-none placeholder:text-muted"
+        className="w-full rounded-lg border border-dashed border-border-strong bg-transparent px-2.5 py-2 font-mono text-[12px] text-text outline-none placeholder:text-muted"
       />
     </div>
   );

@@ -1,3 +1,5 @@
+import Script from "next/script";
+
 import { DEFAULT_APPEARANCE } from "./types";
 
 /**
@@ -24,7 +26,12 @@ const SCRIPT = `
 `;
 
 export function AppearanceScript() {
-  return <script dangerouslySetInnerHTML={{ __html: SCRIPT }} />;
+  return (
+    // eslint-disable-next-line @next/next/no-before-interactive-script-outside-document -- App Router's documented location for beforeInteractive is the root layout, not pages/_document
+    <Script id="appearance-script" strategy="beforeInteractive">
+      {SCRIPT}
+    </Script>
+  );
 }
 
 export const APPEARANCE_STORAGE_KEY = "ced-os:appearance";

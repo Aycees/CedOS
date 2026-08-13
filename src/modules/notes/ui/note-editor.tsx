@@ -195,7 +195,7 @@ export function NoteEditor({
                   title={action.title}
                   aria-label={action.title}
                   onClick={() => runAction(action)}
-                  className="grid size-7 place-items-center rounded-[6px] border border-border font-mono text-[11.5px] text-muted"
+                  className="grid size-7 place-items-center rounded-md border border-border font-mono text-[11.5px] text-muted"
                 >
                   {action.label}
                 </button>
@@ -218,10 +218,10 @@ export function NoteEditor({
             rows={16}
             aria-label="Note body"
             placeholder="# Heading&#10;&#10;- [ ] a checklist item&#10;&#10;> a quote"
-            className="w-full resize-y rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] leading-relaxed text-text outline-none placeholder:text-muted"
+            className="w-full resize-y rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] leading-relaxed text-text outline-none placeholder:text-muted"
           />
         ) : (
-          <div className="min-h-[320px] rounded-input border border-border px-[14px] py-3">
+          <div className="min-h-80 rounded-input border border-border px-3.5 py-3">
             {body.trim() ? (
               <Markdown>{body}</Markdown>
             ) : (

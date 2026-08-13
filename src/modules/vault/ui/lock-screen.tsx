@@ -100,7 +100,7 @@ export function VaultLockScreen({ settings }: { settings: VaultSettingsView }) {
 
   return (
     <div className="flex flex-1 items-center justify-center p-8">
-      <Card className="w-full max-w-[380px]">
+      <Card className="w-full max-w-95">
         <div className="kicker mb-2.5">Locked</div>
         <h1 className="m-0 font-serif text-[22px] font-normal">Vault</h1>
 

@@ -71,9 +71,9 @@ export function TripDetail({
       />
 
       <div className="flex-1 overflow-auto">
-        <div className="max-w-[820px] p-8">
+        <div className="max-w-205 p-8">
           {trip.outside.length > 0 && (
-            <Card className="mb-[18px] border-accent-red">
+            <Card className="mb-4.5 border-accent-red">
               <div className="kicker mb-1">Outside trip dates</div>
               <p className="m-0 mb-2 font-mono text-[11.5px] text-muted">
                 {/* A8: shortening a trip surfaces the strays for a decision
@@ -91,7 +91,7 @@ export function TripDetail({
             </Card>
           )}
 
-          <div className="flex flex-col gap-[18px]">
+          <div className="flex flex-col gap-4.5">
             {trip.days.map((day) => (
               <Card key={day.date}>
                 <div className="mb-1 flex items-baseline gap-2.5">
@@ -159,7 +159,7 @@ function StopRow({ stop, onEdit }: { stop: StopView; onEdit: () => void }) {
       aria-label={`Edit ${stop.activity}`}
       className="row-divider list-row flex w-full items-baseline gap-3 text-left"
     >
-      <span className="w-[56px] flex-none font-mono text-[12px] text-muted">
+      <span className="w-14 flex-none font-mono text-[12px] text-muted">
         {/* An untimed stop reads as unscheduled rather than as midnight. */}
         {stop.startTime ?? "—"}
       </span>
@@ -259,7 +259,7 @@ function StopModal({
             <select
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+              className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
             >
               {/* Untimed is a real choice — "decide the night before". */}
               <option value="">no set time</option>

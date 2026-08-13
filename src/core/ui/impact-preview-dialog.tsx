@@ -86,7 +86,7 @@ export function ImpactPreviewDialog({
         {records.length === 1 ? "points" : "point"} at this.
       </p>
 
-      <div className="mt-4 max-h-[280px] overflow-y-auto rounded-card border border-border">
+      <div className="mt-4 max-h-70 overflow-y-auto rounded-card border border-border">
         {visible.map((record) => (
           <div
             key={record.id}
@@ -120,7 +120,7 @@ export function ImpactPreviewDialog({
           <select
             value={target}
             onChange={(event) => setTarget(event.target.value)}
-            className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
           >
             {reassignTargets.map((option) => (
               <option key={option.id} value={option.id}>

@@ -54,7 +54,7 @@ export function TaskSnapshot({ initial }: { initial: BucketView }) {
               aria-checked={false}
               aria-label={`Complete ${task.title}`}
               onClick={() => toggle.mutate(task)}
-              className="mt-0.5 grid size-[15px] flex-none place-items-center rounded-[4px] border-[1.5px] border-checkbox"
+              className="mt-0.5 grid size-3.75 flex-none place-items-center rounded-sm border-[1.5px] border-checkbox"
             />
             <span className={cn("min-w-0 flex-1 font-mono text-[13px]")}>{task.title}</span>
           </div>

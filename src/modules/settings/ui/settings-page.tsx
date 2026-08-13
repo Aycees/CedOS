@@ -28,7 +28,7 @@ export function SettingsPage({
   const { theme, accent, density, setAppearance } = useAppearance();
 
   return (
-    <div className="flex max-w-[640px] flex-col gap-[18px] p-8">
+    <div className="flex max-w-160 flex-col gap-4.5 p-8">
       <Card>
         <h2 className="m-0 font-serif text-[18px] font-normal">Appearance</h2>
 
@@ -104,7 +104,7 @@ export function SettingsPage({
           <a
             href="/api/export"
             download={`ced-os-export-${new Date().toISOString().slice(0, 10)}.json`}
-            className="inline-flex items-center gap-1.5 rounded-control border border-border px-4 py-[10px] font-mono text-[12px] text-text"
+            className="inline-flex items-center gap-1.5 rounded-control border border-border px-4 py-2.5 font-mono text-[12px] text-text"
           >
             export all data
           </a>

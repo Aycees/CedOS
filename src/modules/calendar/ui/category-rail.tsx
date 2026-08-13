@@ -38,7 +38,7 @@ export function CategoryRail({
   const [creating, setCreating] = useState(false);
 
   return (
-    <div className="w-[196px] flex-none border-r border-border px-5 py-[22px]">
+    <div className="w-49 flex-none border-r border-border px-5 py-5.5">
       <div className="kicker mb-3.5">Calendars</div>
 
       {categories.length === 0 ? (

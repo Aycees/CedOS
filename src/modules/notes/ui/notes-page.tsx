@@ -49,7 +49,7 @@ export function NotesPage({
         <Button onClick={() => setCreating(true)}>+ new note</Button>
 
         <Input
-          className="max-w-[240px]"
+          className="max-w-60"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search notes"
@@ -93,7 +93,7 @@ export function NotesPage({
           }
         />
       ) : view === "list" ? (
-        <div className="max-w-[760px]">
+        <div className="max-w-190">
           {notes.map((note) => (
             <button
               key={note.id}
@@ -109,7 +109,7 @@ export function NotesPage({
                   {note.tag}
                 </span>
               )}
-              <span className="flex-none font-mono text-[10.5px] tracking-[0.1em] text-muted">
+              <span className="flex-none font-mono text-[10.5px] tracking-widest text-muted">
                 {formatListDate(note.noteDate)}
               </span>
             </button>
@@ -122,7 +122,7 @@ export function NotesPage({
               <button
                 type="button"
                 onClick={() => setEditing(note)}
-                className="w-full px-[22px] py-5 text-left"
+                className="w-full px-5.5 py-5 text-left"
               >
                 <div className="kicker">{formatListDate(note.noteDate)}</div>
                 <h2 className="m-0 mt-2 font-serif text-[18px] font-normal">

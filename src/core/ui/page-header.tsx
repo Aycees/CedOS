@@ -22,7 +22,7 @@ export function PageHeader({
   return (
     <header
       className={cn(
-        "flex items-end gap-4 border-b border-border px-8 pb-4 pt-[22px]",
+        "flex items-end gap-4 border-b border-border px-8 pb-4 pt-5.5",
         className,
       )}
     >

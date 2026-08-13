@@ -25,7 +25,7 @@ export function Segmented<T extends string>({
       role="radiogroup"
       aria-label={ariaLabel}
       className={cn(
-        "flex w-fit rounded-[8px] p-[3px]",
+        "flex w-fit rounded-lg p-0.75",
         "bg-[color-mix(in_srgb,var(--text)_7%,transparent)]",
         className,
       )}
@@ -40,7 +40,7 @@ export function Segmented<T extends string>({
             aria-checked={selected}
             onClick={() => onChange(option.value)}
             className={cn(
-              "rounded-[6px] border-none px-[13px] py-1.5 font-mono text-[11.5px]",
+              "rounded-md border-none px-3.25 py-1.5 font-mono text-[11.5px]",
               selected ? "bg-card text-text" : "bg-transparent text-muted",
             )}
           >

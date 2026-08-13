@@ -155,7 +155,7 @@ function Overview({
     : null;
 
   return (
-    <div className="flex max-w-[720px] flex-col gap-[18px]">
+    <div className="flex max-w-180 flex-col gap-4.5">
       <Card>
         <button
           type="button"
@@ -179,7 +179,7 @@ function Overview({
 
         {data.income ? (
           <>
-            <div className="mt-2.5 h-[7px] overflow-hidden rounded-[4px] bg-[color-mix(in_srgb,var(--text)_9%,transparent)]">
+            <div className="mt-2.5 h-1.75 overflow-hidden rounded-sm bg-[color-mix(in_srgb,var(--text)_9%,transparent)]">
               <div
                 className={cn(
                   "h-full",
@@ -218,7 +218,7 @@ function Overview({
               type="button"
               onClick={() => onEditAccount(account)}
               aria-label={`Edit ${account.name}`}
-              className="min-w-[120px] rounded-input border border-border px-3.5 py-2.5 text-left"
+              className="min-w-30 rounded-input border border-border px-3.5 py-2.5 text-left"
             >
               <span className="kicker block">{KIND_LABELS[account.kind]}</span>
               <span className="mt-1 block font-mono text-[12.5px]">{account.name}</span>
@@ -235,7 +235,7 @@ function Overview({
             </button>
           ))}
 
-          <Button variant="dashed" className="min-w-[120px]" onClick={onNewAccount}>
+          <Button variant="dashed" className="min-w-30" onClick={onNewAccount}>
             + account
           </Button>
         </div>
@@ -293,7 +293,7 @@ function TransactionRow({
       </span>
       <span
         className={cn(
-          "w-[92px] flex-none text-right font-mono text-[12.5px]",
+          "w-23 flex-none text-right font-mono text-[12.5px]",
           // A transfer is neither income nor expense, so it stays neutral
           // rather than being coloured as one or the other.
           tx.type === "TRANSFER" ? "text-muted" : negative ? "text-text" : "text-accent-green",
@@ -329,10 +329,10 @@ function Transactions({
   });
 
   return (
-    <div className="max-w-[820px]">
+    <div className="max-w-205">
       <div className="mb-4 flex flex-wrap items-center gap-2.5">
         <Input
-          className="max-w-[220px]"
+          className="max-w-55"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search transactions"
@@ -342,7 +342,7 @@ function Transactions({
           value={categoryId}
           onChange={(e) => setCategoryId(e.target.value)}
           aria-label="Filter by category"
-          className="rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+          className="rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
         >
           <option value="">all categories</option>
           {categories.map((category) => (
@@ -412,7 +412,7 @@ function Budgets({
   const ungrouped = data?.ungrouped ?? [];
 
   return (
-    <div className="max-w-[720px]">
+    <div className="max-w-180">
       <div className="mb-4 flex items-center gap-2.5">
         <Button size="sm" disabled={categories.length === 0} onClick={() => setCreating(true)}>
           + new budget
@@ -432,7 +432,7 @@ function Budgets({
       {groups.length === 0 && ungrouped.length === 0 ? (
         <EmptyState line="no budgets yet" />
       ) : (
-        <div className="flex flex-col gap-[18px]">
+        <div className="flex flex-col gap-4.5">
           {groups.map((group) => {
             const isCollapsed = collapsed.has(group.id);
             return (
@@ -527,7 +527,7 @@ function BudgetRow({ budget }: { budget: BudgetView }) {
           ×
         </button>
       </div>
-      <div className="mt-1.5 h-[6px] overflow-hidden rounded-[4px] bg-[color-mix(in_srgb,var(--text)_9%,transparent)]">
+      <div className="mt-1.5 h-1.5 overflow-hidden rounded-sm bg-[color-mix(in_srgb,var(--text)_9%,transparent)]">
         <div
           className={cn("h-full", over ? "bg-accent-red" : "bg-accent")}
           style={{
@@ -566,12 +566,12 @@ function Debts() {
   ];
 
   return (
-    <div className="max-w-[720px]">
+    <div className="max-w-180">
       <Button size="sm" className="mb-4" onClick={() => setCreating(true)}>
         + new debt
       </Button>
 
-      <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4.5 md:grid-cols-2">
         {lists.map((list) => {
           const rows = debts.filter((debt) => debt.direction === list.direction);
           return (
@@ -601,7 +601,7 @@ function Debts() {
                         settle.mutate({ id: debt.id, settled: !debt.settledAt })
                       }
                       className={cn(
-                        "grid size-[15px] flex-none place-items-center rounded-[4px] border-[1.5px] font-mono text-[9px] leading-none",
+                        "grid size-3.75 flex-none place-items-center rounded-sm border-[1.5px] font-mono text-[9px] leading-none",
                         debt.settledAt
                           ? "border-accent-green bg-accent-green text-on-dark"
                           : "border-checkbox",

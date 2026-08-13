@@ -57,21 +57,29 @@ export default async function RootLayout({
 }) {
   // Rendering the appearance server-side from UserSettings means the first
   // paint is already correct — there is no flash to correct afterwards.
+  //
+  // For an unauthenticated visitor there is no UserSettings row, so the
+  // attributes are left unset here rather than stamped with
+  // DEFAULT_APPEARANCE: AppearanceScript below only fills in from
+  // localStorage when the attribute is still empty, and an eagerly-set
+  // default would block that guard from ever running.
   const session = await getSession();
-  const appearance = {
-    theme: isTheme(session?.theme) ? session.theme : DEFAULT_APPEARANCE.theme,
-    accent: isAccent(session?.accent) ? session.accent : DEFAULT_APPEARANCE.accent,
-    density: isDensity(session?.density)
-      ? session.density
-      : DEFAULT_APPEARANCE.density,
-  };
+  const appearance = session
+    ? {
+        theme: isTheme(session.theme) ? session.theme : DEFAULT_APPEARANCE.theme,
+        accent: isAccent(session.accent) ? session.accent : DEFAULT_APPEARANCE.accent,
+        density: isDensity(session.density)
+          ? session.density
+          : DEFAULT_APPEARANCE.density,
+      }
+    : null;
 
   return (
     <html
       lang="en"
-      data-theme={appearance.theme}
-      data-accent={appearance.accent}
-      data-density={appearance.density}
+      data-theme={appearance?.theme}
+      data-accent={appearance?.accent}
+      data-density={appearance?.density}
       className={`${newsreader.variable} ${plexMono.variable}`}
       suppressHydrationWarning
     >

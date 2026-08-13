@@ -32,7 +32,7 @@ export function JournalPage({
   });
 
   return (
-    <div className="max-w-[760px] p-8">
+    <div className="max-w-190 p-8">
       <div className="mb-5">
         <Button onClick={() => setCreating(true)}>+ new entry</Button>
       </div>

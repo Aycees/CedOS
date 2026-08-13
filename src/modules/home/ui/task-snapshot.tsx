@@ -24,7 +24,6 @@ export function TaskSnapshot({ initial }: { initial: BucketView }) {
   });
 
   const bucket = buckets.find((b) => b.bucket === "TODAY") ?? initial;
-  const open = bucket.tasks.filter((task) => !task.completedAt);
 
   const toggle = useMutation({
     mutationFn: (task: TaskView) =>
@@ -41,24 +40,40 @@ export function TaskSnapshot({ initial }: { initial: BucketView }) {
         </Link>
       </div>
 
-      {open.length === 0 ? (
+      {bucket.tasks.length === 0 ? (
         <p className="m-0 py-1.5 font-serif text-[15px] italic text-muted">
           no tasks for today
         </p>
       ) : (
-        open.map((task) => (
-          <div key={task.id} className="row-divider list-row flex items-start gap-2.5">
-            <button
-              type="button"
-              role="checkbox"
-              aria-checked={false}
-              aria-label={`Complete ${task.title}`}
-              onClick={() => toggle.mutate(task)}
-              className="mt-0.5 grid size-3.75 flex-none place-items-center rounded-sm border-[1.5px] border-checkbox"
-            />
-            <span className={cn("min-w-0 flex-1 font-mono text-[13px]")}>{task.title}</span>
-          </div>
-        ))
+        bucket.tasks.map((task) => {
+          const done = Boolean(task.completedAt);
+
+          return (
+            <div key={task.id} className="row-divider list-row flex items-start gap-2.5">
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={done}
+                aria-label={done ? `Reopen ${task.title}` : `Complete ${task.title}`}
+                onClick={() => toggle.mutate(task)}
+                className={cn(
+                  "mt-0.5 grid size-4.25 flex-none place-items-center rounded-[5px] border-[1.5px]",
+                  done ? "border-accent-green bg-accent-green text-on-dark" : "border-checkbox",
+                )}
+              >
+                {done ? <span className="font-mono text-[9px] leading-none">✓</span> : null}
+              </button>
+              <span
+                className={cn(
+                  "min-w-0 flex-1 font-mono text-[13px]",
+                  done && "text-muted line-through",
+                )}
+              >
+                {task.title}
+              </span>
+            </div>
+          );
+        })
       )}
     </Card>
   );

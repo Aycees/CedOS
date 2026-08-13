@@ -9,14 +9,8 @@ import { userMessage } from "@/core/errors";
 import { Button } from "@/core/ui/button";
 import { Input, Textarea } from "@/core/ui/input";
 import { Modal, ModalActions } from "@/core/ui/modal";
+import { TimePicker } from "@/core/ui/time-picker";
 import type { CategoryView, EventView } from "../schema";
-
-/** Five-minute steps, matching the time picker in the mockup. */
-const TIMES = Array.from({ length: 24 * 12 }, (_, i) => {
-  const hours = String(Math.floor(i / 12)).padStart(2, "0");
-  const minutes = String((i % 12) * 5).padStart(2, "0");
-  return `${hours}:${minutes}`;
-});
 
 export function EventModal({
   event,
@@ -73,15 +67,17 @@ export function EventModal({
       kicker={event ? "EDIT EVENT" : "NEW EVENT"}
       title={event ? "Edit event" : "New event"}
       width={460}
+      titleVisible={false}
     >
-      <div className="mt-5 flex flex-col gap-4">
+      <div className="flex flex-col gap-4">
         <Input
           variant="ghost"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Event title"
+          placeholder={event ? "Edit event" : "New event"}
           aria-label="Event title"
           autoFocus
+          className="mt-3"
         />
 
         <div className="flex gap-3">
@@ -89,6 +85,7 @@ export function EventModal({
             <span className="kicker">Date</span>
             <Input
               type="date"
+              tinted
               value={eventDate}
               onChange={(e) => setEventDate(e.target.value)}
             />
@@ -100,35 +97,50 @@ export function EventModal({
               Empty means untimed, which is a real state rather than midnight —
               the whole reason startTime is a nullable time column (A2).
             */}
-            <select
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
-            >
-              <option value="">all day</option>
-              {TIMES.map((time) => (
-                <option key={time} value={time}>
-                  {time}
-                </option>
-              ))}
-            </select>
+            <TimePicker value={startTime} onChange={setStartTime} />
           </label>
         </div>
 
-        <label className="flex flex-col gap-1.5">
-          <span className="kicker">Calendar</span>
-          <select
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
-          >
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
+        <label className="flex items-center gap-3 font-mono text-[12px] text-text">
+          <input
+            type="checkbox"
+            checked={!startTime}
+            onChange={(e) => setStartTime(e.target.checked ? "" : "09:00")}
+            className="m-0 size-3.75 shrink-0 accent-accent"
+          />
+          <span>all-day</span>
         </label>
+
+        <div className="flex flex-col gap-2">
+          <span className="kicker">Calendar</span>
+          <div className="flex flex-wrap gap-1.75">
+            {categories.map((category) => {
+              const selected = categoryId === category.id;
+              return (
+                <button
+                  key={category.id}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => setCategoryId(category.id)}
+                  className="flex items-center gap-1.75 rounded-pill border px-3.25 py-1.5 font-mono text-[11.5px] text-text"
+                  style={{
+                    borderColor: selected ? `var(--accent-${category.color})` : "var(--border)",
+                    background: selected
+                      ? `color-mix(in srgb, var(--accent-${category.color}) 10%, transparent)`
+                      : "transparent",
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    className="size-2 flex-none rounded-full"
+                    style={{ background: `var(--accent-${category.color})` }}
+                  />
+                  {category.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         <label className="flex flex-col gap-1.5">
           <span className="kicker">Location · optional</span>
@@ -157,7 +169,11 @@ export function EventModal({
       <ModalActions
         destructive={
           event ? (
-            <Button variant="outline" onClick={() => remove.mutate()}>
+            <Button
+              variant="outline"
+              className="border-accent-terracotta/40 text-accent-terracotta"
+              onClick={() => remove.mutate()}
+            >
               delete
             </Button>
           ) : null

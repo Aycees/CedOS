@@ -6,6 +6,8 @@ import { cn } from "./cn";
  * boxed — mono, 1px border, 8px radius; forms and search fields.
  * ghost  — borderless serif at 24px; titles typed inline on the page
  *          (a new note, a new event), where the input *is* the heading.
+ * tinted — boxed with a faint fill (`bg-text/5`) instead of transparent;
+ *          the mockup's date/time trigger fields.
  *
  * design-reference/components/core/Input.prompt.md
  */
@@ -19,13 +21,15 @@ export type InputVariant = keyof typeof VARIANTS;
 
 export function Input({
   variant = "boxed",
+  tinted = false,
   className,
   ...rest
-}: InputHTMLAttributes<HTMLInputElement> & { variant?: InputVariant }) {
+}: InputHTMLAttributes<HTMLInputElement> & { variant?: InputVariant; tinted?: boolean }) {
   return (
     <input
       className={cn(
-        "w-full bg-transparent text-text outline-none placeholder:text-muted",
+        "w-full text-text outline-none placeholder:text-muted",
+        tinted ? "bg-text/5" : "bg-transparent",
         VARIANTS[variant],
         className,
       )}

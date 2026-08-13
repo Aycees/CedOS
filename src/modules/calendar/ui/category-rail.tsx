@@ -187,20 +187,20 @@ function CategoryModal({
       onOpenChange={(open) => !open && onClose()}
       kicker={category ? "EDIT CALENDAR" : "NEW CALENDAR"}
       title={category ? "Edit calendar" : "New calendar"}
-      width={400}
+      width={360}
+      titleVisible={false}
     >
-      <div className="mt-5 flex flex-col gap-4">
-        <label className="flex flex-col gap-1.5">
-          <span className="kicker">Name</span>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="School, Personal, Travel…"
-            autoFocus
-          />
-        </label>
+      <div className="flex flex-col gap-4">
+        <Input
+          variant="ghost"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Calendar name"
+          autoFocus
+          className="mt-3"
+        />
 
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           <span className="kicker">Color</span>
           <div className="flex flex-wrap items-center gap-2">
             {CATEGORY_COLORS.map((option) => (
@@ -211,10 +211,14 @@ function CategoryModal({
                 aria-pressed={color === option}
                 onClick={() => setColor(option)}
                 className={cn(
-                  "size-6 rounded-full border-2",
+                  "size-6.5 rounded-full border-2",
                   color === option ? "border-text" : "border-transparent",
                 )}
-                style={{ background: `var(--accent-${option})` }}
+                style={{
+                  background: `var(--accent-${option})`,
+                  // Mockup-only decorative ring; no token exists for this white inset highlight.
+                  boxShadow: "inset 0 0 0 1px rgba(255,255,255,.5)",
+                }}
               />
             ))}
           </div>
@@ -226,7 +230,11 @@ function CategoryModal({
       <ModalActions
         destructive={
           category ? (
-            <Button variant="outline" onClick={() => attemptDelete.mutate()}>
+            <Button
+              variant="outline"
+              className="border-accent-terracotta/40 text-accent-terracotta"
+              onClick={() => attemptDelete.mutate()}
+            >
               delete
             </Button>
           ) : null

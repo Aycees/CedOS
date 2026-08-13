@@ -18,11 +18,7 @@ export default async function Calendar() {
 
   return (
     <>
-      <PageHeader
-        className="hidden lg:flex"
-        kicker={`Calendar · ${DateTime.fromFormat(month, "yyyy-MM").toFormat("LLLL yyyy")}`}
-        title="Calendar"
-      />
+      <PageHeader className="hidden lg:flex" kicker="Plan" title="Calendar" />
       <CalendarPage
         initialCategories={categories}
         initialEvents={events}

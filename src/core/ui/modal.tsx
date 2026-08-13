@@ -39,6 +39,16 @@ export function Modal({
         <Dialog.Content
           aria-describedby={undefined}
           aria-label={titleVisible ? undefined : title}
+          onPointerDownOutside={(e) => {
+            if ((e.target as HTMLElement)?.closest("[data-modal-portal-ignore]")) {
+              e.preventDefault();
+            }
+          }}
+          onInteractOutside={(e) => {
+            if ((e.target as HTMLElement)?.closest("[data-modal-portal-ignore]")) {
+              e.preventDefault();
+            }
+          }}
           style={{ width: `min(${width}px, 88vw)` }}
           className={cn(
             "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2",

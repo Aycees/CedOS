@@ -27,6 +27,7 @@ export default async function Calendar() {
         initialEvents={events}
         initialMonth={month}
         weekStartsOn={settings.weekStartsOn}
+        timezone={session.timezone}
       />
     </>
   );

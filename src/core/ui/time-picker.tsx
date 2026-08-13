@@ -84,10 +84,15 @@ export function TimePicker({
       {open &&
         createPortal(
           <>
-            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
             <div
+              data-modal-portal-ignore
+              className="pointer-events-auto fixed inset-0 z-40"
+              onClick={() => setOpen(false)}
+            />
+            <div
+              data-modal-portal-ignore
               style={{ top: pos.top, left: pos.left, width: PANEL_WIDTH }}
-              className="fixed z-50 flex max-h-47.5 overflow-hidden rounded-modal border border-border bg-card shadow-dialog"
+              className="pointer-events-auto fixed z-50 flex max-h-47.5 overflow-hidden rounded-modal border border-border bg-card shadow-dialog"
             >
               <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto border-r border-border p-1">
                 {HOURS_12.map((h) => (

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { useMemo, useState } from "react";
 
+import { todayIso } from "@/core/date";
 import { api } from "@/core/mutation/client";
 import { Button } from "@/core/ui/button";
 import { cn } from "@/core/ui/cn";
@@ -21,11 +22,13 @@ export function CalendarPage({
   initialEvents,
   initialMonth,
   weekStartsOn,
+  timezone,
 }: {
   initialCategories: CategoryView[];
   initialEvents: EventView[];
   initialMonth: string;
   weekStartsOn: number;
+  timezone: string;
 }) {
   const [month, setMonth] = useState(initialMonth);
   const [view, setView] = useState<"month" | "list">("month");
@@ -164,7 +167,12 @@ export function CalendarPage({
               onPick={(date, event) => canCreate && setModal({ event, date })}
             />
           ) : (
-            <AgendaList byDate={byDate} colorOf={colorOf} onPick={setModal} />
+            <AgendaList
+              byDate={byDate}
+              colorOf={colorOf}
+              onPick={setModal}
+              today={todayIso(timezone)}
+            />
           )}
         </div>
       </div>
@@ -286,10 +294,12 @@ function AgendaList({
   byDate,
   colorOf,
   onPick,
+  today,
 }: {
   byDate: Map<string, EventView[]>;
   colorOf: (categoryId: string) => string;
   onPick: (pick: { event: EventView; date: string }) => void;
+  today: string;
 }) {
   const dates = [...byDate.keys()].sort();
 
@@ -302,39 +312,57 @@ function AgendaList({
   }
 
   return (
-    <div className="max-w-190 p-6">
-      {dates.map((date) => (
-        <div key={date} className="mb-5">
-          <div className="kicker mb-1.5">
-            {DateTime.fromFormat(date, "yyyy-MM-dd", { zone: "utc" }).toFormat(
-              "ccc · LLL d",
-            )}
+    <div className="max-w-200 px-8 pt-2 pb-15">
+      {dates.map((date) => {
+        const day = DateTime.fromFormat(date, "yyyy-MM-dd", { zone: "utc" });
+        const isToday = date === today;
+
+        return (
+          <div
+            key={date}
+            className="flex gap-5.5 border-b border-dashed border-border py-4.5"
+          >
+            <div className="w-14.5 flex-none text-right">
+              <div
+                className={cn(
+                  "font-mono text-[22px] leading-[1.1]",
+                  isToday ? "text-accent" : "text-text",
+                )}
+              >
+                {day.day}
+              </div>
+              <div className="font-mono text-[10px] tracking-widest text-muted">
+                {day.toFormat("ccc").toUpperCase()}
+              </div>
+            </div>
+
+            <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+              {byDate.get(date)!.map((event) => (
+                <button
+                  key={event.id}
+                  type="button"
+                  onClick={() => onPick({ event, date })}
+                  className="flex w-full items-baseline gap-3 text-left"
+                >
+                  <span
+                    aria-hidden
+                    className="size-2 flex-none translate-y-0.5 rounded-full"
+                    style={{ background: `var(--accent-${colorOf(event.categoryId)})` }}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-[14.5px]">
+                    {event.title}
+                  </span>
+                  <span className="flex-none font-mono text-[11.5px] text-muted">
+                    {event.startTime
+                      ? DateTime.fromFormat(event.startTime, "HH:mm").toFormat("h:mm a")
+                      : "all-day"}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
-          {byDate.get(date)!.map((event) => (
-            <button
-              key={event.id}
-              type="button"
-              onClick={() => onPick({ event, date })}
-              className="row-divider list-row flex w-full items-baseline gap-3 text-left"
-            >
-              <span className="w-13 flex-none font-mono text-[12px] text-muted">
-                {event.startTime ?? "all day"}
-              </span>
-              <span
-                aria-hidden
-                className="size-2 flex-none translate-y-0.5 rounded-full"
-                style={{ background: `var(--accent-${colorOf(event.categoryId)})` }}
-              />
-              <span className="min-w-0 flex-1 font-mono text-[13px]">{event.title}</span>
-              {event.location && (
-                <span className="flex-none font-mono text-[11px] text-muted">
-                  {event.location}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

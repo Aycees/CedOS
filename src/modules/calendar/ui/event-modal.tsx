@@ -26,7 +26,9 @@ export function EventModal({
   const queryClient = useQueryClient();
   const [title, setTitle] = useState(event?.title ?? "");
   const [eventDate, setEventDate] = useState(event?.eventDate ?? defaultDate);
-  const [startTime, setStartTime] = useState(event?.startTime ?? "");
+  // A new event defaults to a timed 9am slot; an existing event keeps
+  // whatever it actually has, including all-day (null startTime).
+  const [startTime, setStartTime] = useState(event ? (event.startTime ?? "") : "09:00");
   const [categoryId, setCategoryId] = useState(event?.categoryId ?? categories[0]?.id ?? "");
   const [location, setLocation] = useState(event?.location ?? "");
   const [note, setNote] = useState(event?.note ?? "");
@@ -74,7 +76,7 @@ export function EventModal({
           variant="ghost"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder={event ? "Edit event" : "New event"}
+          placeholder={event ? "Edit event" : "Event title"}
           aria-label="Event title"
           autoFocus
           className="mt-3"

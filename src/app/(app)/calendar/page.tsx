@@ -19,6 +19,7 @@ export default async function Calendar() {
   return (
     <>
       <PageHeader
+        className="hidden lg:flex"
         kicker={`Calendar · ${DateTime.fromFormat(month, "yyyy-MM").toFormat("LLLL yyyy")}`}
         title="Calendar"
       />

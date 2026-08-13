@@ -82,7 +82,7 @@ export function EventModal({
           className="mt-3"
         />
 
-        <div className="flex gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <label className="flex flex-1 flex-col gap-1.5">
             <span className="kicker">Date</span>
             <Input

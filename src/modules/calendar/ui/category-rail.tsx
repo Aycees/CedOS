@@ -29,16 +29,87 @@ export function CategoryRail({
   categories,
   hidden,
   onToggle,
+  variant,
 }: {
   categories: CategoryView[];
   hidden: Set<string>;
   onToggle: (id: string) => void;
+  /** `sidebar` is the always-visible desktop column; `chips` is the horizontally
+   * scrollable mobile row. Each is rendered once by the caller, guarded by its
+   * own `hidden lg:*` classes, and owns its own create/edit state independently. */
+  variant: "sidebar" | "chips";
 }) {
   const [editing, setEditing] = useState<CategoryView | null>(null);
   const [creating, setCreating] = useState(false);
 
+  if (variant === "chips") {
+    return (
+      <div className="flex items-center gap-2 overflow-x-auto border-b border-border px-4 py-3 lg:hidden">
+        {categories.length === 0 ? (
+          <p className="m-0 whitespace-nowrap font-serif text-[13px] italic text-muted">
+            no calendars yet
+          </p>
+        ) : (
+          categories.map((category) => {
+            const on = !hidden.has(category.id);
+            return (
+              <div
+                key={category.id}
+                className="flex flex-none items-center gap-1.5 rounded-pill border border-border py-1.5 pl-3 pr-2"
+              >
+                <button
+                  type="button"
+                  onClick={() => onToggle(category.id)}
+                  aria-pressed={on}
+                  className="flex items-center gap-1.5 font-mono text-[11.5px]"
+                >
+                  <span
+                    aria-hidden
+                    className={cn("size-2 flex-none rounded-full", !on && "opacity-25")}
+                    style={{ background: `var(--accent-${category.color})` }}
+                  />
+                  <span className={cn("whitespace-nowrap", on ? "text-text" : "text-muted")}>
+                    {category.name}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Edit ${category.name}`}
+                  onClick={() => setEditing(category)}
+                  className="flex-none font-mono text-[11px] text-muted"
+                >
+                  ✎
+                </button>
+              </div>
+            );
+          })
+        )}
+
+        <button
+          type="button"
+          aria-label="New calendar"
+          onClick={() => setCreating(true)}
+          className="flex-none whitespace-nowrap rounded-pill border border-dashed border-border px-3 py-1.5 font-mono text-[11.5px] text-muted"
+        >
+          + new
+        </button>
+
+        {(creating || editing) && (
+          <CategoryModal
+            category={editing}
+            categories={categories}
+            onClose={() => {
+              setCreating(false);
+              setEditing(null);
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="w-49 flex-none border-r border-border px-5 py-5.5">
+    <div className="hidden w-49 flex-none border-r border-border px-5 py-5.5 lg:block">
       <div className="kicker mb-3.5">Calendars</div>
 
       {categories.length === 0 ? (

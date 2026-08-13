@@ -6,7 +6,7 @@ import { countTodayEvents } from "@/modules/calendar/service";
 import { countDueToday } from "@/modules/habits/service";
 import { countOpenTasks } from "@/modules/tasks/service";
 import { AppearanceProvider } from "@/core/theme/appearance-provider";
-import { Sidebar } from "@/core/ui/sidebar";
+import { AppShell } from "@/core/ui/app-shell";
 
 import { AppearanceSync } from "./appearance-sync";
 
@@ -39,22 +39,15 @@ export default async function AppLayout({
       }}
     >
       <AppearanceSync />
-      <div className="relative flex h-screen overflow-hidden">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10"
-          style={{
-            backgroundImage: "radial-gradient(var(--dot) 1px, transparent 1px)",
-            backgroundSize: "22px 22px",
-          }}
-        />
-        <Sidebar
-          name={session.name}
-          dateLabel={formatSidebarDate(today(session.timezone))}
-          badges={{ openTasks, todayEvents, habitsDue }}
-        />
-        <main className="flex min-w-0 flex-1 flex-col">{children}</main>
-      </div>
+      <AppShell
+        sidebarProps={{
+          name: session.name,
+          dateLabel: formatSidebarDate(today(session.timezone)),
+          badges: { openTasks, todayEvents, habitsDue },
+        }}
+      >
+        {children}
+      </AppShell>
     </AppearanceProvider>
   );
 }

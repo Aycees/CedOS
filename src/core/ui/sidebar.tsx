@@ -14,14 +14,22 @@ import { cn } from "./cn";
  * The left rail. Groups are individually collapsible (product spec §2), and
  * Settings is pinned separately at the bottom, always visible.
  */
+export type SidebarProps = {
+  name: string;
+  dateLabel: string;
+  badges: NavBadges;
+};
+
 export function Sidebar({
   name,
   dateLabel,
   badges,
-}: {
-  name: string;
-  dateLabel: string;
-  badges: NavBadges;
+  open,
+  onClose,
+}: SidebarProps & {
+  /** Whether the mobile off-canvas drawer is open. Ignored at `lg:` and up. */
+  open: boolean;
+  onClose: () => void;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -38,7 +46,13 @@ export function Sidebar({
   }
 
   return (
-    <aside className="flex w-54 flex-none flex-col border-r border-border bg-sidebar">
+    <aside
+      className={cn(
+        "flex w-54 flex-none flex-col border-r border-border bg-sidebar",
+        "fixed inset-y-0 left-0 z-40 transition-transform lg:static lg:translate-x-0",
+        open ? "translate-x-0" : "-translate-x-full",
+      )}
+    >
       <div className="flex items-center gap-2.5 px-5 pb-1 pt-5">
         <div className="font-mono text-[13px] font-medium tracking-[0.02em]">Ced OS</div>
         <button
@@ -49,6 +63,14 @@ export function Sidebar({
           className="ml-auto grid size-6.5 place-items-center rounded-[7px] border border-border text-muted"
         >
           {theme === "dark" ? <MoonGlyph /> : <SunGlyph />}
+        </button>
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={onClose}
+          className="grid size-6.5 place-items-center rounded-[7px] border border-border text-muted lg:hidden"
+        >
+          <CloseGlyph />
         </button>
       </div>
 
@@ -84,6 +106,7 @@ export function Sidebar({
                     <Link
                       key={item.href}
                       href={item.href}
+                      onClick={onClose}
                       aria-current={active ? "page" : undefined}
                       className={cn(
                         "flex items-center gap-2.5 rounded-lg px-3 py-2.5 font-mono text-[12.5px]",
@@ -109,6 +132,7 @@ export function Sidebar({
       <div className="mt-auto flex flex-col gap-1 px-3 pb-4 pt-3.5">
         <Link
           href="/settings"
+          onClick={onClose}
           aria-current={pathname.startsWith("/settings") ? "page" : undefined}
           className={cn(
             "flex items-center gap-2.5 rounded-lg px-3 py-2.5 font-mono text-[12.5px]",
@@ -189,6 +213,24 @@ function MoonGlyph() {
       aria-hidden
     >
       <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+    </svg>
+  );
+}
+
+function CloseGlyph() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M18 6 6 18M6 6l12 12" />
     </svg>
   );
 }

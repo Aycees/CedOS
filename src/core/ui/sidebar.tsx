@@ -33,7 +33,7 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [signingOut, setSigningOut] = useState(false);
   const { theme, setAppearance } = useAppearance();
 
@@ -76,17 +76,17 @@ export function Sidebar({
 
       <nav className="flex flex-col gap-0.5 overflow-y-auto px-3 py-3.5">
         {NAV.map((group) => {
-          const isCollapsed = group.label ? collapsed[group.label] : false;
+          const isCollapsed = group.label ? collapsedGroups[group.label] : false;
           return (
             <div key={group.label ?? "home"} className="flex flex-col gap-0.5">
               {group.label && (
                 <button
                   type="button"
                   onClick={() =>
-                    setCollapsed((c) => ({ ...c, [group.label!]: !c[group.label!] }))
+                    setCollapsedGroups((c) => ({ ...c, [group.label!]: !c[group.label!] }))
                   }
                   aria-expanded={!isCollapsed}
-                  className="mt-3 flex items-center px-3 pb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted"
+                  className="mt-3 flex items-center px-3 pb-1 font-mono text-[12px] font-semibold uppercase tracking-widest text-text"
                 >
                   {group.label}
                   <span aria-hidden className="ml-auto text-[11px]">

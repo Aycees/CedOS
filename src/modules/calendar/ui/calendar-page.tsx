@@ -136,9 +136,7 @@ export function CalendarPage({
             <Button
               size="sm"
               disabled={!canCreate}
-              onClick={() =>
-                setModal({ event: null, date: cursor.toFormat("yyyy-MM-01") })
-              }
+              onClick={() => setModal({ event: null, date: todayIso(timezone) })}
             >
               + new event
             </Button>

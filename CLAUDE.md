@@ -70,6 +70,8 @@ Kickers are 10.5px, so the first one is the most consequential. Resolving this m
 
 When a decision has a real tradeoff — schema shape, dependency, architecture — stop and present 2–3 options with pros and cons, then recommend one. Otherwise proceed.
 
+Don't automatically use the Chrome DevTools MCP to verify the feature and screenshots. Ask before reaching for it.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know

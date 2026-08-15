@@ -107,6 +107,25 @@ export function formatShortDate(iso: IsoDate): string {
     .toUpperCase();
 }
 
+/** "FRI · AUG 7 · 2026" — the journal detail-pane header stamp. */
+export function formatEntryStamp(iso: IsoDate): string {
+  return DateTime.fromFormat(iso, ISO_DATE, { zone: "utc" })
+    .toFormat("ccc · LLL d · yyyy")
+    .toUpperCase();
+}
+
+/** "07" — zero-padded day number for the journal sidebar list. */
+export function formatEntryDay(iso: IsoDate): string {
+  return DateTime.fromFormat(iso, ISO_DATE, { zone: "utc" }).toFormat("dd");
+}
+
+/** "AUG" — month abbreviation for the journal sidebar list. */
+export function formatEntryMonth(iso: IsoDate): string {
+  return DateTime.fromFormat(iso, ISO_DATE, { zone: "utc" })
+    .toFormat("LLL")
+    .toUpperCase();
+}
+
 /**
  * Age derived from a birthday, never stored (product spec §12.1) so it cannot
  * go stale. Null when the birthday is unset — the caller shows

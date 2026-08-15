@@ -12,6 +12,12 @@ import type { EntryView } from "../schema";
 const AUTOSAVE_DELAY_MS = 700;
 const DELETE_ARM_MS = 3000;
 
+/** Cmd/Ctrl+B and Cmd/Ctrl+I wrap the selection with markdown syntax. */
+const SHORTCUTS: Record<string, (selected: string) => { text: string; caret: number }> = {
+  b: (s) => ({ text: `**${s}**`, caret: s ? 0 : 2 }),
+  i: (s) => ({ text: `*${s}*`, caret: s ? 0 : 1 }),
+};
+
 export function JournalEntry({
   entry,
   onDeleted,
@@ -75,6 +81,30 @@ export function JournalEntry({
     scheduleSave(value);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!(e.metaKey || e.ctrlKey)) return;
+    const apply = SHORTCUTS[e.key.toLowerCase()];
+    if (!apply) return;
+    e.preventDefault();
+
+    const textarea = bodyRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = body.slice(start, end);
+    const { text, caret } = apply(selected);
+    const next = body.slice(0, start) + text + body.slice(end);
+
+    handleBodyChange(next);
+
+    const caretOffset = selected ? text.length : caret;
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + caretOffset, start + caretOffset);
+    });
+  };
+
   const handleDeleteClick = () => {
     if (armed) {
       if (armTimer.current) clearTimeout(armTimer.current);
@@ -130,6 +160,7 @@ export function JournalEntry({
             value={body}
             onChange={(e) => handleBodyChange(e.target.value)}
             onBlur={flush}
+            onKeyDown={handleKeyDown}
             aria-label="Journal entry"
             placeholder="How was today?"
             className="h-full min-h-full w-full resize-none border-none bg-transparent font-serif text-[16.5px] leading-[1.65] text-text outline-none placeholder:italic placeholder:text-muted"

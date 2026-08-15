@@ -20,7 +20,7 @@ export function GlanceStrip({
   currency: string;
 }) {
   return (
-    <div className="grid max-w-[1040px] grid-cols-1 gap-[22px] px-8 pb-8 sm:grid-cols-3">
+    <div className="grid max-w-260 grid-cols-1 gap-5.5 px-8 pb-8 sm:grid-cols-3">
       <Card>
         <div className="kicker mb-1.5">Habits</div>
         {habitsDue > 0 ? (

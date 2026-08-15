@@ -18,7 +18,7 @@ export default async function Finance() {
 
   return (
     <>
-      <PageHeader kicker={`Finance · ${overview.monthLabel}`} title="Money" />
+      <PageHeader kicker="Track" title="Finance" />
       <div className="flex-1 overflow-auto">
         <FinancePage
           overview={overview}

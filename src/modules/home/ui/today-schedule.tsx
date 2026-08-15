@@ -46,7 +46,7 @@ export function TodaySchedule({
           >
             <span
               aria-hidden
-              className="size-[7px] flex-none rounded-full"
+              className="size-1.75 flex-none rounded-full"
               style={{ background: `var(--accent-${colorOf(event.categoryId)})` }}
             />
             <span className="min-w-0 flex-1 truncate">{event.title}</span>

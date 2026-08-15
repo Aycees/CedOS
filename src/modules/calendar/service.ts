@@ -287,6 +287,37 @@ export async function deleteEvent(userId: string, id: string) {
   await prisma.calendarEvent.update({ where: { id }, data: softDeleted() });
 }
 
+/**
+ * Retention cleanup: soft-deletes events a year past their creation, same as
+ * every other delete path (tombstoned, not erased). Run by the purge cron
+ * (`/api/cron/purge-events`), not by anything user-facing, so it walks every
+ * user with stale events rather than taking a single `userId` — the app-layer
+ * scoping in `core/db/scope.ts` still applies per write, one user at a time.
+ */
+export async function purgeOldEvents(retentionDays = 365): Promise<{
+  userCount: number;
+  purgedEvents: number;
+}> {
+  const cutoff = DateTime.now().minus({ days: retentionDays }).toJSDate();
+
+  const staleOwners = await prisma.calendarEvent.findMany({
+    where: { createdAt: { lt: cutoff }, deletedAt: null },
+    distinct: ["userId"],
+    select: { userId: true },
+  });
+
+  let purgedEvents = 0;
+  for (const { userId } of staleOwners) {
+    const result = await prisma.calendarEvent.updateMany({
+      where: live(userId, { createdAt: { lt: cutoff } }),
+      data: softDeleted(),
+    });
+    purgedEvents += result.count;
+  }
+
+  return { userCount: staleOwners.length, purgedEvents };
+}
+
 /** Every event ever created, for the JSON export (G2) — unlike the grid, unbounded. */
 export async function listAllEvents(userId: string): Promise<EventView[]> {
   const events = await prisma.calendarEvent.findMany({

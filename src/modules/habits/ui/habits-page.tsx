@@ -125,7 +125,7 @@ function TodayView({
   })).filter((group) => group.habits.length > 0);
 
   return (
-    <div className="flex max-w-[720px] flex-col gap-[18px]">
+    <div className="flex max-w-180 flex-col gap-4.5">
       {bySlot.map((group) => (
         <Card key={group.slot} className="pb-3">
           <div className="kicker mb-1">{SLOT_LABELS[group.slot]}</div>
@@ -187,7 +187,7 @@ function HabitRow({
               : log.mutate({ status: "LOGGED", value: habit.targetValue })
         }
         className={cn(
-          "grid size-[17px] flex-none place-items-center rounded-[4px] border-[1.5px] font-mono text-[10px] leading-none",
+          "grid size-4.25 flex-none place-items-center rounded-sm border-[1.5px] font-mono text-[10px] leading-none",
           done ? "text-on-dark" : "border-checkbox",
         )}
         style={done ? { background: `var(--accent-${habit.color})`, borderColor: `var(--accent-${habit.color})` } : undefined}
@@ -235,7 +235,7 @@ function HabitRow({
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             aria-label={`Amount for ${habit.name}`}
-            className="w-[64px] rounded-input border border-border bg-transparent px-2 py-1 font-mono text-[11.5px] text-text outline-none"
+            className="w-16 rounded-input border border-border bg-transparent px-2 py-1 font-mono text-[11.5px] text-text outline-none"
           />
           <span className="font-mono text-[10.5px] text-muted">
             /{habit.targetValue} {habit.unit}
@@ -305,13 +305,13 @@ function HistoryView({ today }: { today: string }) {
             </span>
           </div>
 
-          <div className="flex flex-wrap gap-[3px]">
+          <div className="flex flex-wrap gap-0.75">
             {row.cells.map((cell) => (
               <span
                 key={cell.date}
                 title={`${cell.date}${cell.due ? "" : " · not due"}`}
                 className={cn(
-                  "size-[11px] rounded-[2px]",
+                  "size-2.75 rounded-xs",
                   !cell.due && "opacity-25",
                 )}
                 style={{
@@ -333,7 +333,7 @@ function HistoryView({ today }: { today: string }) {
             {[0.2, 0.4, 0.6, 0.8, 1].map((step) => (
               <span
                 key={step}
-                className="size-[9px] rounded-[2px]"
+                className="size-2.25 rounded-xs"
                 style={{
                   background: `color-mix(in srgb, var(--accent-${row.color}) ${step * 100}%, transparent)`,
                 }}

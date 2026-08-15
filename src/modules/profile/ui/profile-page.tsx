@@ -34,7 +34,7 @@ export function ProfilePage({ initial, age }: { initial: ProfileView; age: numbe
   };
 
   return (
-    <div className="flex max-w-[640px] flex-col gap-[18px] p-8">
+    <div className="flex max-w-160 flex-col gap-4.5 p-8">
       <Card>
         <div className="flex items-center gap-3.5">
           <span
@@ -76,7 +76,7 @@ export function ProfilePage({ initial, age }: { initial: ProfileView; age: numbe
               type="date"
               value={profile.birthday ?? ""}
               onChange={(event) => save({ birthday: event.target.value || null })}
-              className="max-w-[180px]"
+              className="max-w-45"
             />
             <span className="font-mono text-[11.5px] text-muted">
               {/* Derived, never stored — and never a bare zero when unset. */}

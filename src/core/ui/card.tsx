@@ -13,7 +13,7 @@ export function Card({ className, ...rest }: HTMLAttributes<HTMLElement>) {
   return (
     <section
       className={cn(
-        "rounded-card border border-border bg-card px-[22px] py-5",
+        "rounded-card border border-border bg-card px-5.5 py-5",
         className,
       )}
       {...rest}

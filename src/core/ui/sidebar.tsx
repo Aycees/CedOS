@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { createSupabaseBrowserClient } from "@/core/auth/supabase-browser";
 import { NAV, type NavBadges } from "@/core/nav/config";
 import { useAppearance } from "@/core/theme/appearance-provider";
 
@@ -13,21 +14,45 @@ import { cn } from "./cn";
  * The left rail. Groups are individually collapsible (product spec §2), and
  * Settings is pinned separately at the bottom, always visible.
  */
+export type SidebarProps = {
+  name: string;
+  dateLabel: string;
+  badges: NavBadges;
+};
+
 export function Sidebar({
   name,
   dateLabel,
   badges,
-}: {
-  name: string;
-  dateLabel: string;
-  badges: NavBadges;
+  open,
+  onClose,
+}: SidebarProps & {
+  /** Whether the mobile off-canvas drawer is open. Ignored at `lg:` and up. */
+  open: boolean;
+  onClose: () => void;
 }) {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const router = useRouter();
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [signingOut, setSigningOut] = useState(false);
   const { theme, setAppearance } = useAppearance();
 
+  async function signOut() {
+    setSigningOut(true);
+    await createSupabaseBrowserClient().auth.signOut();
+    // Full navigation so proxy sees the cleared session cookie.
+    window.location.assign("/sign-in");
+    router.refresh();
+  }
+
   return (
-    <aside className="flex w-[216px] flex-none flex-col border-r border-border bg-sidebar">
+    <aside
+      className={cn(
+        "flex w-54 flex-none flex-col border-r border-border bg-sidebar",
+        "fixed inset-y-0 left-0 z-40 transition-transform lg:static lg:translate-x-0",
+        open ? "translate-x-0" : "-translate-x-full",
+      )}
+    >
       <div className="flex items-center gap-2.5 px-5 pb-1 pt-5">
         <div className="font-mono text-[13px] font-medium tracking-[0.02em]">Ced OS</div>
         <button
@@ -35,25 +60,33 @@ export function Sidebar({
           title="Toggle day/night"
           aria-label={theme === "dark" ? "Switch to paper theme" : "Switch to dark theme"}
           onClick={() => setAppearance({ theme: theme === "dark" ? "paper" : "dark" })}
-          className="ml-auto grid size-[26px] place-items-center rounded-[7px] border border-border text-muted"
+          className="ml-auto grid size-6.5 place-items-center rounded-[7px] border border-border text-muted"
         >
           {theme === "dark" ? <MoonGlyph /> : <SunGlyph />}
+        </button>
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={onClose}
+          className="grid size-6.5 place-items-center rounded-[7px] border border-border text-muted lg:hidden"
+        >
+          <CloseGlyph />
         </button>
       </div>
 
       <nav className="flex flex-col gap-0.5 overflow-y-auto px-3 py-3.5">
         {NAV.map((group) => {
-          const isCollapsed = group.label ? collapsed[group.label] : false;
+          const isCollapsed = group.label ? collapsedGroups[group.label] : false;
           return (
             <div key={group.label ?? "home"} className="flex flex-col gap-0.5">
               {group.label && (
                 <button
                   type="button"
                   onClick={() =>
-                    setCollapsed((c) => ({ ...c, [group.label!]: !c[group.label!] }))
+                    setCollapsedGroups((c) => ({ ...c, [group.label!]: !c[group.label!] }))
                   }
                   aria-expanded={!isCollapsed}
-                  className="mt-3 flex items-center px-3 pb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted"
+                  className="mt-3 flex items-center px-3 pb-1 font-mono text-[12px] font-semibold uppercase tracking-widest text-text"
                 >
                   {group.label}
                   <span aria-hidden className="ml-auto text-[11px]">
@@ -73,9 +106,10 @@ export function Sidebar({
                     <Link
                       key={item.href}
                       href={item.href}
+                      onClick={onClose}
                       aria-current={active ? "page" : undefined}
                       className={cn(
-                        "flex items-center gap-2.5 rounded-[8px] px-3 py-2.5 font-mono text-[12.5px]",
+                        "flex items-center gap-2.5 rounded-lg px-3 py-2.5 font-mono text-[12.5px]",
                         active
                           ? "bg-[color-mix(in_srgb,var(--text)_6%,transparent)] text-text"
                           : "text-muted",
@@ -98,9 +132,10 @@ export function Sidebar({
       <div className="mt-auto flex flex-col gap-1 px-3 pb-4 pt-3.5">
         <Link
           href="/settings"
+          onClick={onClose}
           aria-current={pathname.startsWith("/settings") ? "page" : undefined}
           className={cn(
-            "flex items-center gap-2.5 rounded-[8px] px-3 py-2.5 font-mono text-[12.5px]",
+            "flex items-center gap-2.5 rounded-lg px-3 py-2.5 font-mono text-[12.5px]",
             pathname.startsWith("/settings")
               ? "bg-[color-mix(in_srgb,var(--text)_6%,transparent)] text-text"
               : "text-muted",
@@ -109,25 +144,34 @@ export function Sidebar({
           <span aria-hidden>⚙</span> Settings
         </Link>
 
-        <Link
-          href="/profile"
-          className="mt-1 flex items-center gap-2.5 border-t border-dashed border-border px-3 pt-3.5"
-        >
-          <span
-            aria-hidden
-            className="grid size-7 flex-none place-items-center rounded-full bg-accent font-mono text-[12px] text-on-dark"
+        <div className="mt-1 flex items-center gap-2.5 border-t border-dashed border-border px-3 pt-3.5">
+          <Link href="/profile" className="flex min-w-0 flex-1 items-center gap-2.5">
+            <span
+              aria-hidden
+              className="grid size-7 flex-none place-items-center rounded-full bg-accent font-mono text-[12px] text-on-dark"
+            >
+              {(name.trim()[0] ?? "?").toUpperCase()}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate font-mono text-[12.5px] text-text">
+                {name.trim() || "Unnamed"}
+              </span>
+              <span className="block font-mono text-[10px] tracking-widest text-muted">
+                {dateLabel}
+              </span>
+            </span>
+          </Link>
+          <button
+            type="button"
+            title="Log out"
+            aria-label="Log out"
+            onClick={signOut}
+            disabled={signingOut}
+            className="grid size-7 flex-none place-items-center rounded-[7px] text-muted disabled:opacity-50"
           >
-            {(name.trim()[0] ?? "?").toUpperCase()}
-          </span>
-          <span className="min-w-0">
-            <span className="block truncate font-mono text-[12.5px] text-text">
-              {name.trim() || "Unnamed"}
-            </span>
-            <span className="block font-mono text-[10px] tracking-[0.1em] text-muted">
-              {dateLabel}
-            </span>
-          </span>
-        </Link>
+            <LogOutGlyph />
+          </button>
+        </div>
       </div>
     </aside>
   );
@@ -169,6 +213,44 @@ function MoonGlyph() {
       aria-hidden
     >
       <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+    </svg>
+  );
+}
+
+function CloseGlyph() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+function LogOutGlyph() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="M16 17l5-5-5-5" />
+      <path d="M21 12H9" />
     </svg>
   );
 }

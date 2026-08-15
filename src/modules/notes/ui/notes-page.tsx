@@ -1,16 +1,16 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { formatListDate } from "@/core/date";
+import { formatShortDate } from "@/core/date";
+import { newId } from "@/core/ids";
 import { api } from "@/core/mutation/client";
 import { Button } from "@/core/ui/button";
 import { Card } from "@/core/ui/card";
-import { Chip } from "@/core/ui/chip";
 import { cn } from "@/core/ui/cn";
 import { Input } from "@/core/ui/input";
-import { EmptyState } from "@/core/ui/page-header";
+import { EmptyState, PageHeader } from "@/core/ui/page-header";
 import { Segmented } from "@/core/ui/segmented";
 import { displayTitle, type NoteView } from "../schema";
 
@@ -19,141 +19,168 @@ import { NoteEditor } from "./note-editor";
 
 export function NotesPage({
   initial,
-  tags,
   todayIso,
 }: {
   initial: NoteView[];
-  tags: string[];
   todayIso: string;
 }) {
-  const [view, setView] = useState<"list" | "grid">("list");
+  const queryClient = useQueryClient();
+  const [view, setView] = useState<"list" | "grid">("grid");
   const [query, setQuery] = useState("");
-  const [tag, setTag] = useState<string | null>(null);
-  const [editing, setEditing] = useState<NoteView | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const search = new URLSearchParams();
   if (query.trim()) search.set("q", query.trim());
-  if (tag) search.set("tag", tag);
 
   const { data: notes = initial } = useQuery({
-    queryKey: ["notes", query.trim(), tag],
+    queryKey: ["notes", query.trim()],
     queryFn: () => api.get<NoteView[]>(`/api/notes?${search}`),
-    initialData: !query.trim() && !tag ? initial : undefined,
+    initialData: !query.trim() ? initial : undefined,
     placeholderData: (previous) => previous,
   });
 
+  // Falls back to the first note whenever nothing has been explicitly
+  // selected yet, without needing an effect — a search refetch never steals
+  // focus away from a note the user already opened, since selectedId sticks
+  // once a click sets it.
+  const effectiveId = selectedId ?? notes[0]?.id ?? null;
+  const selected = notes.find((note) => note.id === effectiveId) ?? null;
+
+  const create = useMutation({
+    mutationFn: async () => {
+      const id = newId();
+      await api.post("/api/notes", { id, title: "", body: "", noteDate: todayIso });
+      return id;
+    },
+    onSuccess: (id) => {
+      void queryClient.invalidateQueries({ queryKey: ["notes"] });
+      setSelectedId(id);
+    },
+  });
+
   return (
-    <div className="p-8">
-      <div className="mb-5 flex flex-wrap items-center gap-3">
-        <Button onClick={() => setCreating(true)}>+ new note</Button>
+    <>
+      <PageHeader
+        kicker={`Notes · ${notes.length} ${notes.length === 1 ? "item" : "items"}`}
+        title="Notes"
+        actions={
+          <>
+            <Segmented
+              aria-label="Notes view"
+              value={view}
+              onChange={setView}
+              options={[
+                { label: "List", value: "list" },
+                { label: "Grid", value: "grid" },
+              ]}
+            />
+            <Button onClick={() => create.mutate()} disabled={create.isPending}>
+              + new note
+            </Button>
+          </>
+        }
+      />
 
-        <Input
-          className="max-w-[240px]"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search notes"
-          aria-label="Search notes"
-        />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div
+          className={cn(
+            "w-full flex-col border-border lg:w-85 lg:flex-none lg:border-r",
+            selectedId ? "hidden lg:flex" : "flex",
+          )}
+        >
+          <div className="flex h-18 items-center border-b border-border px-4 lg:px-5">
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search notes"
+              aria-label="Search notes"
+            />
+          </div>
 
-        <Segmented
-          className="ml-auto"
-          aria-label="Notes view"
-          value={view}
-          onChange={setView}
-          options={[
-            { label: "List", value: "list" },
-            { label: "Grid", value: "grid" },
-          ]}
-        />
-      </div>
-
-      {tags.length > 0 && (
-        <div className="mb-5 flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => setTag(null)}>
-            <Chip className={cn(!tag && "border-border-strong")}>all</Chip>
-          </button>
-          {tags.map((option) => (
-            <button key={option} type="button" onClick={() => setTag(option)}>
-              <Chip className={cn(tag === option && "border-border-strong")}>{option}</Chip>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {notes.length === 0 ? (
-        <EmptyState
-          line={query.trim() ? "no notes match" : "no notes yet"}
-          action={
-            query.trim() ? undefined : (
-              <Button variant="dashed" className="w-full" onClick={() => setCreating(true)}>
-                + write your first note
-              </Button>
-            )
-          }
-        />
-      ) : view === "list" ? (
-        <div className="max-w-[760px]">
-          {notes.map((note) => (
-            <button
-              key={note.id}
-              type="button"
-              onClick={() => setEditing(note)}
-              className="row-divider list-row flex w-full items-baseline gap-3 text-left"
-            >
-              <span className="min-w-0 flex-1 truncate font-mono text-[13px]">
-                {displayTitle(note)}
-              </span>
-              {note.tag && (
-                <span className="flex-none font-mono text-[11px] text-muted">
-                  {note.tag}
-                </span>
-              )}
-              <span className="flex-none font-mono text-[10.5px] tracking-[0.1em] text-muted">
-                {formatListDate(note.noteDate)}
-              </span>
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {notes.map((note) => (
-            <Card key={note.id} className="p-0">
-              <button
-                type="button"
-                onClick={() => setEditing(note)}
-                className="w-full px-[22px] py-5 text-left"
-              >
-                <div className="kicker">{formatListDate(note.noteDate)}</div>
-                <h2 className="m-0 mt-2 font-serif text-[18px] font-normal">
-                  {displayTitle(note)}
-                </h2>
-                {/* Preview, never a full render — a very long note must not
-                    try to lay itself out inside a card (product spec §6). */}
-                <p className="m-0 mt-2 line-clamp-4 font-mono text-[11.5px] leading-relaxed text-muted">
-                  {markdownPreview(note.body)}
-                </p>
-                {note.tag && (
-                  <span className="mt-3 inline-block font-mono text-[10.5px] text-muted">
-                    {note.tag}
+          <div className="flex-1 overflow-auto">
+            {notes.length === 0 ? (
+              <div className="p-4">
+                <EmptyState line={query.trim() ? "no notes match" : "no notes yet"} />
+              </div>
+            ) : view === "list" ? (
+              notes.map((note) => (
+                <button
+                  key={note.id}
+                  type="button"
+                  onClick={() => setSelectedId(note.id)}
+                  className={cn(
+                    "row-divider list-row flex w-full items-baseline gap-3 px-4 text-left",
+                    note.id === effectiveId &&
+                      "bg-[color-mix(in_srgb,var(--text)_5%,transparent)]",
+                  )}
+                >
+                  <span className="min-w-0 flex-1 truncate font-mono text-[13px]">
+                    {displayTitle(note)}
                   </span>
-                )}
-              </button>
-            </Card>
-          ))}
+                  <span className="flex-none font-mono text-[10.5px] tracking-widest text-muted">
+                    {formatShortDate(note.noteDate)}
+                  </span>
+                </button>
+              ))
+            ) : (
+              <div className="grid grid-cols-1 gap-2 px-4 py-4 sm:grid-cols-2 lg:grid-cols-1">
+                {notes.map((note) => (
+                  <button
+                    key={note.id}
+                    type="button"
+                    onClick={() => setSelectedId(note.id)}
+                    className="text-left"
+                  >
+                    <Card
+                      style={{ backgroundColor: "var(--sidebar)" }}
+                      className={cn(
+                        "h-28 overflow-hidden px-4 py-3",
+                        note.id === effectiveId && "border-border-strong",
+                      )}
+                    >
+                      <div className="flex items-baseline justify-between gap-2">
+                        <h2 className="m-0 min-w-0 truncate font-serif text-[16px] font-semibold">
+                          {displayTitle(note)}
+                        </h2>
+                        <span className="flex-none font-mono text-[10.5px] tracking-widest text-muted">
+                          {formatShortDate(note.noteDate)}
+                        </span>
+                      </div>
+                      {/* Preview, never a full render — a fixed card height
+                          means a long note must not grow the card. */}
+                      <p className="m-0 mt-1.5 line-clamp-2 font-mono text-[11.5px] leading-relaxed text-muted">
+                        {markdownPreview(note.body)}
+                      </p>
+                    </Card>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      )}
 
-      {(creating || editing) && (
-        <NoteEditor
-          note={editing}
-          todayIso={todayIso}
-          onClose={() => {
-            setCreating(false);
-            setEditing(null);
-          }}
-        />
-      )}
-    </div>
+        <div className={cn("min-w-0 flex-1", selectedId ? "block" : "hidden lg:block")}>
+          {selected ? (
+            <NoteEditor
+              key={selected.id}
+              note={selected}
+              onDeleted={() => setSelectedId(null)}
+              onBack={() => setSelectedId(null)}
+            />
+          ) : (
+            <div className="p-4 sm:p-8">
+              <EmptyState
+                line="no notes yet"
+                action={
+                  <Button variant="dashed" className="w-full" onClick={() => create.mutate()}>
+                    + write your first note
+                  </Button>
+                }
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   );
 }

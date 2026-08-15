@@ -159,7 +159,7 @@ export function CredentialModal({
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value as VaultCategory)}
-            className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
           >
             {VAULT_CATEGORIES.map((option) => (
               <option key={option} value={option}>

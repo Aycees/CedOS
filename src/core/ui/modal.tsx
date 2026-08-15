@@ -20,14 +20,16 @@ export function Modal({
   title,
   kicker,
   width = 400,
+  titleVisible = true,
   children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Announced to screen readers; pass `titleVisible={false}`-style markup in children if the design shows it differently. */
+  /** Announced to screen readers; pass `titleVisible={false}` and render a visible title of your own in children if the design shows it differently. */
   title: string;
   kicker?: string;
   width?: number;
+  titleVisible?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -36,17 +38,30 @@ export function Modal({
         <Dialog.Overlay className="fixed inset-0 z-40 bg-overlay" />
         <Dialog.Content
           aria-describedby={undefined}
+          aria-label={titleVisible ? undefined : title}
+          onPointerDownOutside={(e) => {
+            if ((e.target as HTMLElement)?.closest("[data-modal-portal-ignore]")) {
+              e.preventDefault();
+            }
+          }}
+          onInteractOutside={(e) => {
+            if ((e.target as HTMLElement)?.closest("[data-modal-portal-ignore]")) {
+              e.preventDefault();
+            }
+          }}
           style={{ width: `min(${width}px, 88vw)` }}
           className={cn(
             "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2",
             "max-h-[88vh] overflow-y-auto rounded-modal border border-border",
-            "bg-card px-[26px] py-6 shadow-dialog",
+            "bg-card px-6.5 py-6 shadow-dialog",
           )}
         >
           {kicker ? <div className="kicker mb-2.5">{kicker}</div> : null}
-          <Dialog.Title className="m-0 font-serif text-[24px] font-normal tracking-[-0.015em] text-text">
-            {title}
-          </Dialog.Title>
+          {titleVisible ? (
+            <Dialog.Title className="m-0 font-serif text-[24px] font-normal tracking-[-0.015em] text-text">
+              {title}
+            </Dialog.Title>
+          ) : null}
           {children}
         </Dialog.Content>
       </Dialog.Portal>

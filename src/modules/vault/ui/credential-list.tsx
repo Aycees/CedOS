@@ -63,7 +63,7 @@ export function CredentialList({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <Input
-          className="max-w-[240px]"
+          className="max-w-60"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search site or username"
@@ -91,7 +91,7 @@ export function CredentialList({
       {filtered.length === 0 ? (
         <EmptyState line="no credentials match" />
       ) : (
-        <div className="max-w-[720px]">
+        <div className="max-w-180">
           {filtered.map((item) => (
             <CredentialRow key={item.id} item={item} onEdit={() => onEdit(item)} />
           ))}
@@ -132,7 +132,7 @@ function CredentialRow({
     <div className="row-divider list-row flex flex-wrap items-center gap-3">
       <span
         aria-hidden
-        className="size-[7px] flex-none rounded-full"
+        className="size-1.75 flex-none rounded-full"
         style={{ background: `var(--accent-${VAULT_CATEGORY_COLORS[item.category]})` }}
       />
 

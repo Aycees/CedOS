@@ -100,6 +100,13 @@ export function formatListDate(iso: IsoDate): string {
     .toUpperCase();
 }
 
+/** "AUG 11" — compact card metadata, no year. */
+export function formatShortDate(iso: IsoDate): string {
+  return DateTime.fromFormat(iso, ISO_DATE, { zone: "utc" })
+    .toFormat("LLL d")
+    .toUpperCase();
+}
+
 /**
  * Age derived from a birthday, never stored (product spec §12.1) so it cannot
  * go stale. Null when the birthday is unset — the caller shows

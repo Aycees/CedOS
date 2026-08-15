@@ -101,7 +101,7 @@ export function VaultSetup({ onDone }: { onDone: () => void }) {
   if (step === "password") {
     return (
       <div className="flex flex-1 items-center justify-center p-8">
-        <Card className="w-full max-w-[420px]">
+        <Card className="w-full max-w-105">
           <div className="kicker mb-2.5">Set up</div>
           <h1 className="m-0 font-serif text-[22px] font-normal">Create a master password</h1>
           <p className="m-0 mt-2 font-mono text-[11.5px] leading-relaxed text-muted">
@@ -138,7 +138,7 @@ export function VaultSetup({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="flex flex-1 items-center justify-center p-8">
-      <Card className="w-full max-w-[480px]">
+      <Card className="w-full max-w-120">
         <div className="kicker mb-2.5">Recovery kit</div>
         <h1 className="m-0 font-serif text-[22px] font-normal">Save this now</h1>
         <p className="m-0 mt-2 font-mono text-[11.5px] leading-relaxed text-muted">

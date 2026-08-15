@@ -22,7 +22,7 @@ export function PageHeader({
   return (
     <header
       className={cn(
-        "flex items-end gap-4 border-b border-border px-8 pb-4 pt-[22px]",
+        "flex flex-wrap items-end gap-x-4 gap-y-3 border-b border-border px-4 pb-4 pt-5.5 sm:px-6 lg:px-8",
         className,
       )}
     >
@@ -32,7 +32,9 @@ export function PageHeader({
           {title}
         </h1>
       </div>
-      {actions ? <div className="ml-auto flex items-center gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="ml-auto flex flex-wrap items-center gap-2">{actions}</div>
+      ) : null}
     </header>
   );
 }

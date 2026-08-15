@@ -5,7 +5,6 @@ import { useState } from "react";
 
 import { newId } from "@/core/ids";
 import { api } from "@/core/mutation/client";
-import { Card } from "@/core/ui/card";
 import { cn } from "@/core/ui/cn";
 import type { BucketView, TaskBucket, TaskView } from "../schema";
 
@@ -19,15 +18,15 @@ export function TasksPage({ initial }: { initial: BucketView[] }) {
   });
 
   return (
-    <div className="grid max-w-[1040px] grid-cols-1 items-start gap-[22px] p-8 lg:grid-cols-3">
+    <div className="mx-auto flex max-w-260 flex-col px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       {buckets.map((bucket) => (
-        <BucketCard key={bucket.bucket} bucket={bucket} />
+        <TaskSection key={bucket.bucket} bucket={bucket} />
       ))}
     </div>
   );
 }
 
-function BucketCard({ bucket }: { bucket: BucketView }) {
+function TaskSection({ bucket }: { bucket: BucketView }) {
   const queryClient = useQueryClient();
   const [showCompleted, setShowCompleted] = useState(false);
 
@@ -50,17 +49,27 @@ function BucketCard({ bucket }: { bucket: BucketView }) {
     onSuccess: invalidate,
   });
 
+  const rename = useMutation({
+    mutationFn: (input: { id: string; title: string }) =>
+      api.patch("/api/tasks", input),
+    onSuccess: invalidate,
+  });
+
   // A3: completed items stay visible and struck through, but fold behind a
   // toggle once they are more than 7 days old. Nothing is ever auto-deleted.
   const visible = bucket.tasks.filter((task) => !task.collapsed);
   const collapsed = bucket.tasks.filter((task) => task.collapsed);
+  const open = bucket.total - bucket.done;
 
   return (
-    <Card className="pb-4">
-      <div className="mb-1 flex items-baseline gap-2.5">
-        <h2 className="m-0 font-serif text-[18px] font-normal">{bucket.label}</h2>
-        <span className="ml-auto font-mono text-[11px] text-muted">
-          {bucket.done}/{bucket.total}
+    <section className="mb-8.5">
+      <div className="mb-2 flex items-baseline gap-2.5">
+        <h2 className="m-0 font-mono text-[10.5px] font-normal uppercase tracking-[0.14em] text-muted">
+          {bucket.label}
+        </h2>
+        <div className="h-px flex-1 bg-border" />
+        <span className="font-mono text-[10.5px] text-muted">
+          {open}/{bucket.total}
         </span>
       </div>
 
@@ -70,6 +79,7 @@ function BucketCard({ bucket }: { bucket: BucketView }) {
           task={task}
           onToggle={() => toggle.mutate(task)}
           onRemove={() => remove.mutate(task.id)}
+          onRename={(title) => rename.mutate({ id: task.id, title })}
         />
       ))}
 
@@ -89,6 +99,7 @@ function BucketCard({ bucket }: { bucket: BucketView }) {
                 task={task}
                 onToggle={() => toggle.mutate(task)}
                 onRemove={() => remove.mutate(task.id)}
+                onRename={(title) => rename.mutate({ id: task.id, title })}
               />
             ))}
         </>
@@ -103,7 +114,7 @@ function BucketCard({ bucket }: { bucket: BucketView }) {
         onAdd={(title) => create.mutate(title)}
         empty={bucket.total === 0}
       />
-    </Card>
+    </section>
   );
 }
 
@@ -111,15 +122,29 @@ function TaskRow({
   task,
   onToggle,
   onRemove,
+  onRename,
 }: {
   task: TaskView;
   onToggle: () => void;
   onRemove: () => void;
+  onRename: (title: string) => void;
 }) {
   const done = Boolean(task.completedAt);
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(task.title);
+
+  const commit = () => {
+    setEditing(false);
+    const trimmed = value.trim();
+    if (trimmed && trimmed !== task.title) {
+      onRename(trimmed);
+    } else {
+      setValue(task.title);
+    }
+  };
 
   return (
-    <div className="row-divider list-row group flex items-start gap-2.5">
+    <div className="row-divider list-row flex items-start gap-2.5">
       <button
         type="button"
         role="checkbox"
@@ -127,27 +152,61 @@ function TaskRow({
         aria-label={done ? `Reopen ${task.title}` : `Complete ${task.title}`}
         onClick={onToggle}
         className={cn(
-          "mt-0.5 grid size-[15px] flex-none place-items-center rounded-[4px] border-[1.5px]",
-          done ? "border-accent bg-accent text-on-dark" : "border-checkbox",
+          "mt-0.5 grid size-4.25 flex-none place-items-center rounded-[5px] border-[1.5px]",
+          done ? "border-accent-green bg-accent-green text-on-dark" : "border-checkbox",
         )}
       >
         {done ? <span className="font-mono text-[9px] leading-none">✓</span> : null}
       </button>
 
-      <span
-        className={cn(
-          "min-w-0 flex-1 font-mono text-[13px]",
-          done && "text-muted line-through",
-        )}
-      >
-        {task.title}
-      </span>
+      {editing ? (
+        <input
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.currentTarget.blur();
+            } else if (e.key === "Escape") {
+              setValue(task.title);
+              setEditing(false);
+            }
+          }}
+          aria-label="Task title"
+          className="min-w-0 flex-1 bg-transparent font-mono text-[13px] text-text outline-none"
+        />
+      ) : (
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label={`Rename ${task.title}`}
+          onClick={() => {
+            setValue(task.title);
+            setEditing(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setValue(task.title);
+              setEditing(true);
+            }
+          }}
+          className={cn(
+            "min-w-0 flex-1 font-mono text-[13px]",
+            done && "text-muted line-through",
+          )}
+        >
+          {task.title}
+        </span>
+      )}
 
       <button
         type="button"
         aria-label={`Remove ${task.title}`}
         onClick={onRemove}
-        className="flex-none font-mono text-[11px] text-muted opacity-0 group-hover:opacity-100 focus:opacity-100"
+        className="flex-none font-mono text-[11px] text-muted"
       >
         ×
       </button>
@@ -180,17 +239,20 @@ function AddTaskInput({
           nothing here yet
         </p>
       )}
-      <input
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") submit();
-        }}
-        onBlur={submit}
-        placeholder="+ add a task"
-        aria-label={`Add a task to ${bucket.toLowerCase().replace("_", " ")}`}
-        className="w-full rounded-[8px] border border-dashed border-border-strong bg-transparent px-2.5 py-2 font-mono text-[12px] text-text outline-none placeholder:text-muted"
-      />
+      <div className="flex items-center gap-2.5 py-1">
+        <div className="size-4.25 flex-none rounded-[5px] border-[1.5px] border-dashed border-border-strong" />
+        <input
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") submit();
+          }}
+          onBlur={submit}
+          placeholder="Add a task…"
+          aria-label={`Add a task to ${bucket.toLowerCase().replace("_", " ")}`}
+          className="min-w-0 flex-1 border-none bg-transparent font-mono text-[13px] text-text outline-none placeholder:text-muted"
+        />
+      </div>
     </div>
   );
 }

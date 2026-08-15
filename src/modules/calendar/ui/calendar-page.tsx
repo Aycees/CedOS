@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { useMemo, useState } from "react";
 
+import { todayIso } from "@/core/date";
 import { api } from "@/core/mutation/client";
 import { Button } from "@/core/ui/button";
 import { cn } from "@/core/ui/cn";
@@ -21,11 +22,13 @@ export function CalendarPage({
   initialEvents,
   initialMonth,
   weekStartsOn,
+  timezone,
 }: {
   initialCategories: CategoryView[];
   initialEvents: EventView[];
   initialMonth: string;
   weekStartsOn: number;
+  timezone: string;
 }) {
   const [month, setMonth] = useState(initialMonth);
   const [view, setView] = useState<"month" | "list">("month");
@@ -81,23 +84,48 @@ export function CalendarPage({
   const cursor = DateTime.fromFormat(month, "yyyy-MM", { zone: "utc" });
   const canCreate = categories.length > 0;
 
+  const onToggleCategory = (id: string) =>
+    setHidden((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
       <CategoryRail
+        variant="sidebar"
         categories={categories}
         hidden={hidden}
-        onToggle={(id) =>
-          setHidden((current) => {
-            const next = new Set(current);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-          })
-        }
+        onToggle={onToggleCategory}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-3 border-b border-border px-6 py-3">
+        <div className="flex items-end justify-between gap-3 px-4 pb-3 pt-4 lg:hidden">
+          <div className="min-w-0">
+            <div className="kicker">Calendar</div>
+            <h1 className="m-0 mt-1 font-serif text-[24px] font-normal tracking-[-0.012em]">
+              {cursor.toFormat("LLLL yyyy")}
+            </h1>
+          </div>
+          <Button
+            size="sm"
+            disabled={!canCreate}
+            onClick={() => setModal({ event: null, date: todayIso(timezone) })}
+          >
+            + new event
+          </Button>
+        </div>
+
+        <CategoryRail
+          variant="chips"
+          categories={categories}
+          hidden={hidden}
+          onToggle={onToggleCategory}
+        />
+
+        <div className="flex items-center gap-3 border-b border-border px-4 py-3 lg:px-6">
           <button
             type="button"
             aria-label="Previous month"
@@ -106,7 +134,7 @@ export function CalendarPage({
           >
             ‹
           </button>
-          <div className="min-w-[150px] font-mono text-[12.5px]">
+          <div className="min-w-0 font-mono text-[12.5px] lg:min-w-37.5">
             {cursor.toFormat("LLLL yyyy")}
           </div>
           <button
@@ -129,13 +157,11 @@ export function CalendarPage({
             ]}
           />
 
-          <div className="ml-auto">
+          <div className="ml-auto hidden lg:block">
             <Button
               size="sm"
               disabled={!canCreate}
-              onClick={() =>
-                setModal({ event: null, date: cursor.toFormat("yyyy-MM-01") })
-              }
+              onClick={() => setModal({ event: null, date: todayIso(timezone) })}
             >
               + new event
             </Button>
@@ -164,7 +190,12 @@ export function CalendarPage({
               onPick={(date, event) => canCreate && setModal({ event, date })}
             />
           ) : (
-            <AgendaList byDate={byDate} colorOf={colorOf} onPick={setModal} />
+            <AgendaList
+              byDate={byDate}
+              colorOf={colorOf}
+              onPick={setModal}
+              today={todayIso(timezone)}
+            />
           )}
         </div>
       </div>
@@ -212,7 +243,7 @@ function MonthGrid({
     <div>
       <div className="grid grid-cols-7 border-b border-border">
         {headers.map((label) => (
-          <div key={label} className="kicker px-3 py-2">
+          <div key={label} className="kicker px-1 py-1.5 text-center lg:px-3 lg:py-2 lg:text-left">
             {label}
           </div>
         ))}
@@ -231,7 +262,7 @@ function MonthGrid({
             <div
               key={iso}
               className={cn(
-                "min-h-[104px] border-b border-r border-border p-2",
+                "min-h-20 border-b border-r border-border p-1.5 lg:min-h-26 lg:p-2",
                 !inMonth && "opacity-40",
               )}
             >
@@ -239,7 +270,7 @@ function MonthGrid({
                 type="button"
                 onClick={() => onPick(iso, null)}
                 aria-label={`Add an event on ${day.toFormat("LLLL d")}`}
-                className="mb-1 font-mono text-[11px] text-muted"
+                className="mb-1 font-mono text-[10.5px] text-muted lg:text-[11px]"
               >
                 {day.day}
               </button>
@@ -250,11 +281,11 @@ function MonthGrid({
                     key={event.id}
                     type="button"
                     onClick={() => onPick(iso, event)}
-                    className="flex items-center gap-1.5 text-left font-mono text-[11px]"
+                    className="flex items-center gap-1 text-left font-mono text-[10px] lg:gap-1.5 lg:text-[11px]"
                   >
                     <span
                       aria-hidden
-                      className="size-[6px] flex-none rounded-full"
+                      className="size-1.5 flex-none rounded-full"
                       style={{ background: `var(--accent-${colorOf(event.categoryId)})` }}
                     />
                     {event.startTime && (
@@ -268,9 +299,9 @@ function MonthGrid({
                   <button
                     type="button"
                     onClick={() => setExpanded(iso)}
-                    className="text-left font-mono text-[10.5px] text-muted"
+                    className="text-left font-mono text-[10px] text-muted lg:text-[10.5px]"
                   >
-                    +{hiddenCount} more
+                    +{hiddenCount}
                   </button>
                 )}
               </div>
@@ -286,55 +317,75 @@ function AgendaList({
   byDate,
   colorOf,
   onPick,
+  today,
 }: {
   byDate: Map<string, EventView[]>;
   colorOf: (categoryId: string) => string;
   onPick: (pick: { event: EventView; date: string }) => void;
+  today: string;
 }) {
   const dates = [...byDate.keys()].sort();
 
   if (dates.length === 0) {
     return (
-      <p className="py-[70px] text-center font-mono text-[12px] text-muted">
+      <p className="py-17.5 text-center font-mono text-[12px] text-muted">
         no events this month
       </p>
     );
   }
 
   return (
-    <div className="max-w-[760px] p-6">
-      {dates.map((date) => (
-        <div key={date} className="mb-5">
-          <div className="kicker mb-1.5">
-            {DateTime.fromFormat(date, "yyyy-MM-dd", { zone: "utc" }).toFormat(
-              "ccc · LLL d",
-            )}
+    <div className="max-w-200 px-4 pt-2 pb-15 lg:px-8">
+      {dates.map((date) => {
+        const day = DateTime.fromFormat(date, "yyyy-MM-dd", { zone: "utc" });
+        const isToday = date === today;
+
+        return (
+          <div
+            key={date}
+            className="flex gap-5.5 border-b border-dashed border-border py-6.5"
+          >
+            <div className="w-14.5 flex-none text-right">
+              <div
+                className={cn(
+                  "font-mono text-[22px] leading-[1.1]",
+                  isToday ? "text-accent" : "text-text",
+                )}
+              >
+                {day.day}
+              </div>
+              <div className="font-mono text-[10px] tracking-widest text-muted">
+                {day.toFormat("ccc").toUpperCase()}
+              </div>
+            </div>
+
+            <div className="flex min-w-0 flex-1 flex-col gap-4">
+              {byDate.get(date)!.map((event) => (
+                <button
+                  key={event.id}
+                  type="button"
+                  onClick={() => onPick({ event, date })}
+                  className="flex w-full items-baseline gap-3 text-left"
+                >
+                  <span
+                    aria-hidden
+                    className="size-2 flex-none translate-y-0.5 rounded-full"
+                    style={{ background: `var(--accent-${colorOf(event.categoryId)})` }}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-[14.5px]">
+                    {event.title}
+                  </span>
+                  <span className="flex-none font-mono text-[11.5px] text-muted">
+                    {event.startTime
+                      ? DateTime.fromFormat(event.startTime, "HH:mm").toFormat("h:mm a")
+                      : "all-day"}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
-          {byDate.get(date)!.map((event) => (
-            <button
-              key={event.id}
-              type="button"
-              onClick={() => onPick({ event, date })}
-              className="row-divider list-row flex w-full items-baseline gap-3 text-left"
-            >
-              <span className="w-[52px] flex-none font-mono text-[12px] text-muted">
-                {event.startTime ?? "all day"}
-              </span>
-              <span
-                aria-hidden
-                className="size-2 flex-none translate-y-0.5 rounded-full"
-                style={{ background: `var(--accent-${colorOf(event.categoryId)})` }}
-              />
-              <span className="min-w-0 flex-1 font-mono text-[13px]">{event.title}</span>
-              {event.location && (
-                <span className="flex-none font-mono text-[11px] text-muted">
-                  {event.location}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

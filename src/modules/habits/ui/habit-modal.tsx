@@ -153,7 +153,7 @@ export function HabitModal({
           <select
             value={timeSlot}
             onChange={(e) => setTimeSlot(e.target.value as TimeSlot)}
-            className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
           >
             {TIME_SLOTS.map((slot) => (
               <option key={slot} value={slot}>
@@ -196,7 +196,7 @@ export function HabitModal({
                       )
                     }
                     className={cn(
-                      "size-8 rounded-[8px] border font-mono text-[11.5px]",
+                      "size-8 rounded-lg border font-mono text-[11.5px]",
                       on ? "border-accent bg-accent text-on-dark" : "border-border text-muted",
                     )}
                   >
@@ -216,7 +216,7 @@ export function HabitModal({
                 value={timesPerWeek}
                 onChange={(e) => setTimesPerWeek(Number(e.target.value))}
                 aria-label="Times per week"
-                className="max-w-[80px]"
+                className="max-w-20"
               />
               <span className="font-mono text-[11.5px] text-muted">times a week</span>
             </label>
@@ -231,7 +231,7 @@ export function HabitModal({
                 value={intervalDays}
                 onChange={(e) => setIntervalDays(Number(e.target.value))}
                 aria-label="Interval days"
-                className="max-w-[80px]"
+                className="max-w-20"
               />
               <span className="font-mono text-[11.5px] text-muted">days from</span>
               <Input
@@ -239,7 +239,7 @@ export function HabitModal({
                 value={anchorDate}
                 onChange={(e) => setAnchorDate(e.target.value)}
                 aria-label="Anchor date"
-                className="max-w-[160px]"
+                className="max-w-40"
               />
             </div>
           )}
@@ -265,14 +265,14 @@ export function HabitModal({
                 value={targetValue}
                 onChange={(e) => setTargetValue(Number(e.target.value))}
                 aria-label="Target"
-                className="max-w-[90px]"
+                className="max-w-22.5"
               />
               <Input
                 value={unit}
                 onChange={(e) => setUnit(e.target.value)}
                 placeholder="glasses, min, pages"
                 aria-label="Unit"
-                className="max-w-[180px]"
+                className="max-w-45"
               />
             </div>
           )}

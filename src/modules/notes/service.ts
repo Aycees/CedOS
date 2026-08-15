@@ -57,17 +57,6 @@ export async function listNotes(
   return notes.map(toView);
 }
 
-/** The distinct tags in use, for the filter row. */
-export async function listTags(userId: string): Promise<string[]> {
-  const rows = await prisma.note.findMany({
-    where: live(userId, { NOT: { tag: null } }),
-    select: { tag: true },
-    distinct: ["tag"],
-    orderBy: { tag: "asc" },
-  });
-  return rows.map((row) => row.tag!).filter(Boolean);
-}
-
 export async function createNote(userId: string, input: CreateNoteInput) {
   return prisma.note.create({
     data: {

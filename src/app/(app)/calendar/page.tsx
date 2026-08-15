@@ -18,15 +18,13 @@ export default async function Calendar() {
 
   return (
     <>
-      <PageHeader
-        kicker={`Calendar · ${DateTime.fromFormat(month, "yyyy-MM").toFormat("LLLL yyyy")}`}
-        title="Calendar"
-      />
+      <PageHeader className="hidden lg:flex" kicker="Plan" title="Calendar" />
       <CalendarPage
         initialCategories={categories}
         initialEvents={events}
         initialMonth={month}
         weekStartsOn={settings.weekStartsOn}
+        timezone={session.timezone}
       />
     </>
   );

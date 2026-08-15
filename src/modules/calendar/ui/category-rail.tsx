@@ -29,16 +29,87 @@ export function CategoryRail({
   categories,
   hidden,
   onToggle,
+  variant,
 }: {
   categories: CategoryView[];
   hidden: Set<string>;
   onToggle: (id: string) => void;
+  /** `sidebar` is the always-visible desktop column; `chips` is the horizontally
+   * scrollable mobile row. Each is rendered once by the caller, guarded by its
+   * own `hidden lg:*` classes, and owns its own create/edit state independently. */
+  variant: "sidebar" | "chips";
 }) {
   const [editing, setEditing] = useState<CategoryView | null>(null);
   const [creating, setCreating] = useState(false);
 
+  if (variant === "chips") {
+    return (
+      <div className="flex items-center gap-2 overflow-x-auto border-b border-border px-4 py-3 lg:hidden">
+        {categories.length === 0 ? (
+          <p className="m-0 whitespace-nowrap font-serif text-[13px] italic text-muted">
+            no calendars yet
+          </p>
+        ) : (
+          categories.map((category) => {
+            const on = !hidden.has(category.id);
+            return (
+              <div
+                key={category.id}
+                className="flex flex-none items-center gap-1.5 rounded-pill border border-border py-1.5 pl-3 pr-2"
+              >
+                <button
+                  type="button"
+                  onClick={() => onToggle(category.id)}
+                  aria-pressed={on}
+                  className="flex items-center gap-1.5 font-mono text-[11.5px]"
+                >
+                  <span
+                    aria-hidden
+                    className={cn("size-2 flex-none rounded-full", !on && "opacity-25")}
+                    style={{ background: `var(--accent-${category.color})` }}
+                  />
+                  <span className={cn("whitespace-nowrap", on ? "text-text" : "text-muted")}>
+                    {category.name}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Edit ${category.name}`}
+                  onClick={() => setEditing(category)}
+                  className="flex-none font-mono text-[11px] text-muted"
+                >
+                  ✎
+                </button>
+              </div>
+            );
+          })
+        )}
+
+        <button
+          type="button"
+          aria-label="New calendar"
+          onClick={() => setCreating(true)}
+          className="flex-none whitespace-nowrap rounded-pill border border-dashed border-border px-3 py-1.5 font-mono text-[11.5px] text-muted"
+        >
+          + new
+        </button>
+
+        {(creating || editing) && (
+          <CategoryModal
+            category={editing}
+            categories={categories}
+            onClose={() => {
+              setCreating(false);
+              setEditing(null);
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="w-[196px] flex-none border-r border-border px-5 py-[22px]">
+    <div className="hidden w-49 flex-none border-r border-border px-5 py-5.5 lg:block">
       <div className="kicker mb-3.5">Calendars</div>
 
       {categories.length === 0 ? (
@@ -187,20 +258,20 @@ function CategoryModal({
       onOpenChange={(open) => !open && onClose()}
       kicker={category ? "EDIT CALENDAR" : "NEW CALENDAR"}
       title={category ? "Edit calendar" : "New calendar"}
-      width={400}
+      width={360}
+      titleVisible={false}
     >
-      <div className="mt-5 flex flex-col gap-4">
-        <label className="flex flex-col gap-1.5">
-          <span className="kicker">Name</span>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="School, Personal, Travel…"
-            autoFocus
-          />
-        </label>
+      <div className="flex flex-col gap-4">
+        <Input
+          variant="ghost"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Calendar name"
+          autoFocus
+          className="mt-3"
+        />
 
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           <span className="kicker">Color</span>
           <div className="flex flex-wrap items-center gap-2">
             {CATEGORY_COLORS.map((option) => (
@@ -211,10 +282,14 @@ function CategoryModal({
                 aria-pressed={color === option}
                 onClick={() => setColor(option)}
                 className={cn(
-                  "size-6 rounded-full border-2",
+                  "size-6.5 rounded-full border-2",
                   color === option ? "border-text" : "border-transparent",
                 )}
-                style={{ background: `var(--accent-${option})` }}
+                style={{
+                  background: `var(--accent-${option})`,
+                  // Mockup-only decorative ring; no token exists for this white inset highlight.
+                  boxShadow: "inset 0 0 0 1px rgba(255,255,255,.5)",
+                }}
               />
             ))}
           </div>
@@ -226,7 +301,11 @@ function CategoryModal({
       <ModalActions
         destructive={
           category ? (
-            <Button variant="outline" onClick={() => attemptDelete.mutate()}>
+            <Button
+              variant="outline"
+              className="border-accent-terracotta/40 text-accent-terracotta"
+              onClick={() => attemptDelete.mutate()}
+            >
               delete
             </Button>
           ) : null

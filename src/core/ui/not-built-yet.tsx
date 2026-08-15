@@ -20,7 +20,7 @@ export function NotBuiltYet({
     <>
       <PageHeader kicker={kicker} title={title} />
       <div className="flex-1 overflow-auto p-8">
-        <p className="m-0 max-w-[420px] font-serif text-[16.5px] italic leading-[1.65] text-muted">
+        <p className="m-0 max-w-105 font-serif text-[16.5px] italic leading-[1.65] text-muted">
           not built yet — {title.toLowerCase()} lands in {phase}.
         </p>
       </div>

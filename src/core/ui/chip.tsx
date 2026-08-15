@@ -19,7 +19,7 @@ export function Chip({
       className={cn(
         "inline-flex items-center gap-1.5 rounded-pill border border-border",
         "bg-[color-mix(in_srgb,var(--text)_5%,transparent)]",
-        "px-3.5 py-[7px] font-mono text-[11.5px] text-text",
+        "px-3.5 py-1.75 font-mono text-[11.5px] text-text",
         className,
       )}
       {...rest}
@@ -27,7 +27,7 @@ export function Chip({
       {dot && (
         <span
           aria-hidden
-          className="size-[7px] flex-none rounded-full"
+          className="size-1.75 flex-none rounded-full"
           style={{ background: color ?? "var(--accent-default)" }}
         />
       )}

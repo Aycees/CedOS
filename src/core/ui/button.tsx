@@ -27,12 +27,12 @@ const VARIANTS: Record<ButtonVariant, string> = {
    * variant-level `w-full` cannot be overridden from the call site — it has
    * to be opted into instead.
    */
-  dashed: "border border-dashed border-border-strong text-muted text-left rounded-[8px]",
+  dashed: "border border-dashed border-border-strong text-muted text-left rounded-lg",
 };
 
 const SIZES: Record<ButtonSize, string> = {
-  sm: "text-[11.5px] px-3 py-[7px]",
-  md: "text-[12px] px-4 py-[10px]",
+  sm: "text-[11.5px] px-3 py-1.75",
+  md: "text-[12px] px-4 py-2.5",
 };
 
 const GHOST_SIZES: Record<ButtonSize, string> = {

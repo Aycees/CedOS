@@ -56,7 +56,7 @@ export default async function Home() {
       />
 
       <div className="flex-1 overflow-auto">
-        <div className="grid max-w-[1040px] grid-cols-1 items-start gap-[22px] p-8 lg:grid-cols-[1.3fr_1fr]">
+        <div className="grid max-w-260 grid-cols-1 items-start gap-5.5 p-8 lg:grid-cols-[1.3fr_1fr]">
           <TodaySchedule events={events} categories={categories} />
           <TaskSnapshot initial={todayBucket} />
         </div>

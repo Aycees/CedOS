@@ -1,21 +1,23 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { DateTime } from "luxon";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { formatListDate } from "@/core/date";
+import { formatListDate, formatSidebarDate, ISO_DATE } from "@/core/date";
 import { userMessage } from "@/core/errors";
 import { newId } from "@/core/ids";
 import { api } from "@/core/mutation/client";
 import { Button } from "@/core/ui/button";
 import { Card } from "@/core/ui/card";
+import { cn } from "@/core/ui/cn";
 import { Input, Textarea } from "@/core/ui/input";
 import { Modal, ModalActions } from "@/core/ui/modal";
 import { PageHeader } from "@/core/ui/page-header";
 
 import type { PushPreview, StopView, TripDetailView } from "../schema";
-import { TripModal } from "./itinerary-page";
+import { formatTripRange, TripModal } from "./itinerary-page";
 
 const TIMES = Array.from({ length: 24 * 4 }, (_, i) => {
   const hours = String(Math.floor(i / 4)).padStart(2, "0");
@@ -56,14 +58,19 @@ export function TripDetail({
   return (
     <>
       <PageHeader
-        kicker={`${formatListDate(trip.startDate)} – ${formatListDate(trip.endDate)} · ${trip.dayCount} days`}
+        kicker={`${formatTripRange(trip.startDate, trip.endDate)} · ${trip.dayCount} ${trip.dayCount === 1 ? "day" : "days"}`}
         title={trip.placeName}
         actions={
           <>
             <Button variant="outline" size="sm" onClick={() => setEditingTrip(true)}>
               edit trip
             </Button>
-            <Button size="sm" onClick={() => preview.mutate()} disabled={preview.isPending}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => preview.mutate()}
+              disabled={preview.isPending}
+            >
               push to calendar
             </Button>
           </>
@@ -71,9 +78,18 @@ export function TripDetail({
       />
 
       <div className="flex-1 overflow-auto">
-        <div className="max-w-[820px] p-8">
+        <div className="max-w-205 p-8">
+          <Button
+            variant="outline"
+            size="sm"
+            className="mb-6"
+            onClick={() => router.push("/itinerary")}
+          >
+            ← all trips
+          </Button>
+
           {trip.outside.length > 0 && (
-            <Card className="mb-[18px] border-accent-red">
+            <Card className="mb-4.5 border-accent-red">
               <div className="kicker mb-1">Outside trip dates</div>
               <p className="m-0 mb-2 font-mono text-[11.5px] text-muted">
                 {/* A8: shortening a trip surfaces the strays for a decision
@@ -91,12 +107,15 @@ export function TripDetail({
             </Card>
           )}
 
-          <div className="flex flex-col gap-[18px]">
+          <div className="flex flex-col gap-4.5">
             {trip.days.map((day) => (
               <Card key={day.date}>
-                <div className="mb-1 flex items-baseline gap-2.5">
-                  <span className="kicker">
-                    Day {day.dayIndex} · {formatListDate(day.date)}
+                <div className="flex items-baseline gap-2.5 border-b border-dashed border-border pb-2.5">
+                  <span className="font-mono text-[13px] font-semibold uppercase tracking-[0.04em] text-text">
+                    Day {day.dayIndex}
+                  </span>
+                  <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted">
+                    {formatSidebarDate(DateTime.fromFormat(day.date, ISO_DATE, { zone: "utc" }))}
                   </span>
                   <button
                     type="button"
@@ -108,14 +127,15 @@ export function TripDetail({
                 </div>
 
                 {day.stops.length === 0 ? (
-                  <p className="m-0 py-2 font-serif text-[15px] italic text-muted">
+                  <p className="m-0 py-8 text-center font-serif text-[15px] italic text-muted">
                     nothing planned
                   </p>
                 ) : (
-                  day.stops.map((stop) => (
+                  day.stops.map((stop, i) => (
                     <StopRow
                       key={stop.id}
                       stop={stop}
+                      divider={i > 0}
                       onEdit={() => setStopModal({ stop, date: day.date })}
                     />
                   ))
@@ -151,15 +171,26 @@ export function TripDetail({
   );
 }
 
-function StopRow({ stop, onEdit }: { stop: StopView; onEdit: () => void }) {
+function StopRow({
+  stop,
+  onEdit,
+  divider = true,
+}: {
+  stop: StopView;
+  onEdit: () => void;
+  divider?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onEdit}
       aria-label={`Edit ${stop.activity}`}
-      className="row-divider list-row flex w-full items-baseline gap-3 text-left"
+      className={cn(
+        "list-row flex w-full items-baseline gap-3 text-left",
+        divider && "row-divider",
+      )}
     >
-      <span className="w-[56px] flex-none font-mono text-[12px] text-muted">
+      <span className="w-14 flex-none font-mono text-[12px] text-muted">
         {/* An untimed stop reads as unscheduled rather than as midnight. */}
         {stop.startTime ?? "—"}
       </span>
@@ -259,7 +290,7 @@ function StopModal({
             <select
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="w-full rounded-input border border-border bg-transparent px-[11px] py-2 font-mono text-[12.5px] text-text outline-none"
+              className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
             >
               {/* Untimed is a real choice — "decide the night before". */}
               <option value="">no set time</option>

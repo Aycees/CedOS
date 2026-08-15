@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { useState } from "react";
 
-import { formatListDate, formatShortDate } from "@/core/date";
+import { formatShortDate } from "@/core/date";
 import { userMessage } from "@/core/errors";
 import { add, formatMoney, isOverdrawn, money, progress, subtract } from "@/core/money";
 import { api } from "@/core/mutation/client";
@@ -415,15 +415,15 @@ function OverviewDebts({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
     <Card>
       <h2 className="m-0 mb-3.5 font-serif text-[18px] font-normal">Debts</h2>
       <div className="grid grid-cols-2 gap-4">
-        <div>
+        <div className="min-w-0">
           <div className="kicker">owed to me</div>
-          <div className="mt-1.5 font-mono text-[22px] tracking-[-0.01em] text-accent-green">
+          <div className="mt-1.5 truncate font-mono text-[22px] tracking-[-0.01em] text-accent-green">
             {formatMoney(owedToMeTotal)}
           </div>
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="kicker">I owe</div>
-          <div className="mt-1.5 font-mono text-[22px] tracking-[-0.01em] text-accent-red">
+          <div className="mt-1.5 truncate font-mono text-[22px] tracking-[-0.01em] text-accent-red">
             {formatMoney(iOweTotal)}
           </div>
         </div>
@@ -554,11 +554,14 @@ function TransactionRow({
       type="button"
       onClick={() => onEdit?.(tx)}
       aria-label={`Edit ${tx.name}`}
-      className="row-divider list-row flex w-full items-baseline gap-3 text-left"
+      className="row-divider list-row flex w-full items-center gap-3 text-left"
     >
+      <span className="flex-none font-mono text-[10.5px] tracking-[0.06em] text-muted">
+        {formatShortDate(tx.occurredOn)}
+      </span>
       <span
         aria-hidden
-        className="size-2 flex-none translate-y-0.5 rounded-full"
+        className="size-2 flex-none rounded-full"
         style={{
           background: tx.categoryColor
             ? `var(--accent-${tx.categoryColor})`
@@ -566,17 +569,9 @@ function TransactionRow({
         }}
       />
       <span className="min-w-0 flex-1 truncate font-mono text-[13px]">{tx.name}</span>
-      <span className="flex-none font-mono text-[10.5px] text-muted">
-        {tx.type === "TRANSFER"
-          ? `${tx.transferFrom} → ${tx.transferTo}`
-          : (tx.categoryName ?? tx.accountName)}
-      </span>
-      <span className="flex-none font-mono text-[10.5px] tracking-[0.08em] text-muted">
-        {formatListDate(tx.occurredOn)}
-      </span>
       <span
         className={cn(
-          "w-23 flex-none text-right font-mono text-[12.5px]",
+          "flex-none font-mono text-[12.5px]",
           // A transfer is neither income nor expense, so it stays neutral
           // rather than being coloured as one or the other.
           tx.type === "TRANSFER" ? "text-muted" : negative ? "text-text" : "text-accent-green",
@@ -898,11 +893,11 @@ function BudgetRow({ budget, divider = true }: { budget: BudgetView; divider?: b
           value={budget.categoryName}
           onCommit={(name) => rename.mutate(name)}
           ariaLabel={`${budget.categoryName} budget name`}
-          className="font-mono text-[13.5px]"
+          className="min-w-0 flex-1 truncate font-mono text-[13.5px]"
         />
         <span
           className={cn(
-            "ml-auto font-mono text-[12.5px]",
+            "flex-none font-mono text-[12.5px]",
             over ? "text-accent-red" : "text-muted",
           )}
         >
@@ -1175,7 +1170,7 @@ function DebtCard({
           onCommit={(personName) => onEditField({ personName })}
           ariaLabel={`${debt.personName} name`}
           className={cn(
-            "font-serif text-[19px]",
+            "min-w-0 flex-1 truncate font-serif text-[19px]",
             settled && "text-muted line-through",
           )}
         />

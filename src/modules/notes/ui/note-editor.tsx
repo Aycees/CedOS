@@ -1,254 +1,201 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { newId } from "@/core/ids";
+import { formatListDate } from "@/core/date";
 import { api } from "@/core/mutation/client";
-import { Button } from "@/core/ui/button";
-import { Input } from "@/core/ui/input";
-import { Modal, ModalActions } from "@/core/ui/modal";
-import { Segmented } from "@/core/ui/segmented";
+import { cn } from "@/core/ui/cn";
 import type { NoteView } from "../schema";
 
-import { Markdown } from "./markdown";
+import { wordCount } from "./markdown";
 
-/**
- * Each toolbar action, expressed as a transform over the current selection.
- *
- * Wrapping rather than replacing is what makes the toolbar useful on existing
- * text: selecting a word and pressing bold should embolden that word, not
- * overwrite it.
- */
-type Action = {
-  label: string;
-  title: string;
-  apply: (selected: string) => { text: string; caret: number };
-  /** Line-level actions operate on whole lines rather than the raw selection. */
-  perLine?: boolean;
+const AUTOSAVE_DELAY_MS = 700;
+const DELETE_ARM_MS = 3000;
+
+/** Cmd/Ctrl+B and Cmd/Ctrl+I wrap the selection — Markdown has no underline
+ * syntax, so there is no third shortcut here. */
+const SHORTCUTS: Record<string, (selected: string) => { text: string; caret: number }> = {
+  b: (s) => ({ text: `**${s}**`, caret: s ? 0 : 2 }),
+  i: (s) => ({ text: `*${s}*`, caret: s ? 0 : 1 }),
 };
-
-const ACTIONS: Action[] = [
-  {
-    label: "B",
-    title: "Bold",
-    apply: (s) => ({ text: `**${s}**`, caret: s ? 0 : 2 }),
-  },
-  {
-    label: "i",
-    title: "Italic",
-    apply: (s) => ({ text: `*${s}*`, caret: s ? 0 : 1 }),
-  },
-  {
-    label: "H",
-    title: "Heading",
-    perLine: true,
-    apply: (s) => ({ text: `## ${s}`, caret: 0 }),
-  },
-  {
-    label: "☐",
-    title: "Checklist",
-    perLine: true,
-    apply: (s) => ({ text: `- [ ] ${s}`, caret: 0 }),
-  },
-  {
-    label: "❝",
-    title: "Quote",
-    perLine: true,
-    apply: (s) => ({ text: `> ${s}`, caret: 0 }),
-  },
-  {
-    label: "<>",
-    title: "Code",
-    apply: (s) => ({ text: `\`${s}\``, caret: s ? 0 : 1 }),
-  },
-  {
-    label: "—",
-    title: "Divider",
-    perLine: true,
-    apply: () => ({ text: "---", caret: 0 }),
-  },
-];
 
 export function NoteEditor({
   note,
-  todayIso,
-  onClose,
+  onDeleted,
 }: {
-  note: NoteView | null;
-  todayIso: string;
-  onClose: () => void;
+  note: NoteView;
+  onDeleted: () => void;
 }) {
   const queryClient = useQueryClient();
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const titleRef = useRef<HTMLInputElement>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [title, setTitle] = useState(note?.title ?? "");
-  const [tag, setTag] = useState(note?.tag ?? "");
-  const [noteDate, setNoteDate] = useState(note?.noteDate ?? todayIso);
-  const [body, setBody] = useState(note?.body ?? "");
-  const [mode, setMode] = useState<"markdown" | "preview">("markdown");
+  // The parent mounts this component with `key={note.id}`, so switching notes
+  // remounts it fresh — these initializers only ever see the newly-selected
+  // note, never stomping on typing from a background refetch of the same one.
+  const [title, setTitle] = useState(note.title);
+  const [body, setBody] = useState(note.body);
+  const [armed, setArmed] = useState(false);
 
-  const done = () => {
-    void queryClient.invalidateQueries({ queryKey: ["notes"] });
-    onClose();
-  };
+  useEffect(() => {
+    if (!note.title && !note.body) titleRef.current?.focus();
+  }, [note.title, note.body]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (armTimer.current) clearTimeout(armTimer.current);
+    };
+  }, []);
 
   const save = useMutation({
-    mutationFn: () => {
-      const payload = { title, tag: tag || null, noteDate, body };
-      return note
-        ? api.patch("/api/notes", { id: note.id, ...payload })
-        : api.post("/api/notes", { id: newId(), ...payload });
+    mutationFn: (payload: { title: string; body: string }) =>
+      api.patch("/api/notes", { id: note.id, ...payload }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["notes"] });
     },
-    onSuccess: done,
   });
 
   const remove = useMutation({
-    mutationFn: () => api.delete(`/api/notes?id=${note!.id}`),
-    onSuccess: done,
+    mutationFn: () => api.delete(`/api/notes?id=${note.id}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["notes"] });
+      onDeleted();
+    },
   });
 
-  const runAction = (action: Action) => {
+  const scheduleSave = (nextTitle: string, nextBody: string) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveTimer.current = null;
+      save.mutate({ title: nextTitle, body: nextBody });
+    }, AUTOSAVE_DELAY_MS);
+  };
+
+  const flush = () => {
+    if (!saveTimer.current) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    save.mutate({ title, body });
+  };
+
+  const handleTitleChange = (value: string) => {
+    setTitle(value);
+    scheduleSave(value, body);
+  };
+
+  const handleBodyChange = (value: string) => {
+    setBody(value);
+    scheduleSave(title, value);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!(e.metaKey || e.ctrlKey)) return;
+    const apply = SHORTCUTS[e.key.toLowerCase()];
+    if (!apply) return;
+    e.preventDefault();
+
     const textarea = bodyRef.current;
     if (!textarea) return;
 
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const selected = body.slice(start, end);
+    const { text, caret } = apply(selected);
+    const next = body.slice(0, start) + text + body.slice(end);
 
-    let replacement: string;
-    if (action.perLine) {
-      const lines = (selected || "").split("\n");
-      replacement = lines.map((line) => action.apply(line).text).join("\n");
-    } else {
-      replacement = action.apply(selected).text;
-    }
+    handleBodyChange(next);
 
-    const next = body.slice(0, start) + replacement + body.slice(end);
-    setBody(next);
-
-    // Put the caret where the user can keep typing: inside the markers when
-    // nothing was selected, after the inserted text when something was.
-    const caretOffset = selected
-      ? replacement.length
-      : action.apply("").caret || replacement.length;
-
+    const caretOffset = selected ? text.length : caret;
     requestAnimationFrame(() => {
       textarea.focus();
       textarea.setSelectionRange(start + caretOffset, start + caretOffset);
     });
   };
 
+  const handleDeleteClick = () => {
+    if (armed) {
+      if (armTimer.current) clearTimeout(armTimer.current);
+      remove.mutate();
+      return;
+    }
+    setArmed(true);
+    armTimer.current = setTimeout(() => setArmed(false), DELETE_ARM_MS);
+  };
+
+  const words = wordCount(body);
+
   return (
-    <Modal
-      open
-      onOpenChange={(open) => !open && onClose()}
-      kicker={note ? "EDIT NOTE" : "NEW NOTE"}
-      title={note ? "Edit note" : "New note"}
-      width={720}
-    >
-      <div className="mt-5 flex flex-col gap-4">
-        <Input
-          variant="ghost"
+    <div className="flex h-full flex-col">
+      <div className="flex h-18 items-center gap-4 border-b border-border px-6">
+        <span className="kicker">
+          edited {formatListDate(note.noteDate)} · {words} {words === 1 ? "word" : "words"}
+        </span>
+
+        <button
+          type="button"
+          aria-label={armed ? "Click again to delete this note" : "Delete note"}
+          title={armed ? "Click again to delete" : "Delete note"}
+          onClick={handleDeleteClick}
+          className={cn(
+            "ml-auto grid size-7 flex-none place-items-center rounded-md",
+            armed ? "text-accent-red" : "text-muted",
+          )}
+        >
+          <TrashGlyph />
+        </button>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col px-8 py-6">
+        <input
+          ref={titleRef}
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => handleTitleChange(e.target.value)}
+          onBlur={flush}
           placeholder="Untitled"
           aria-label="Note title"
+          className="mb-3.5 w-full flex-none border-none bg-transparent font-serif text-[29px] font-medium tracking-[-0.01em] text-text outline-none placeholder:text-muted"
         />
 
-        <div className="flex gap-3">
-          <label className="flex flex-1 flex-col gap-1.5">
-            <span className="kicker">Tag</span>
-            <Input
-              value={tag}
-              onChange={(e) => setTag(e.target.value)}
-              placeholder="school, personal…"
-            />
-          </label>
-          <label className="flex flex-1 flex-col gap-1.5">
-            <span className="kicker">Date</span>
-            <Input
-              type="date"
-              value={noteDate}
-              onChange={(e) => setNoteDate(e.target.value)}
-            />
-          </label>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Segmented
-            aria-label="Editor mode"
-            value={mode}
-            onChange={setMode}
-            options={[
-              { label: "Markdown", value: "markdown" },
-              { label: "Preview", value: "preview" },
-            ]}
-          />
-
-          {mode === "markdown" && (
-            <div className="ml-auto flex items-center gap-1">
-              {ACTIONS.map((action) => (
-                <button
-                  key={action.title}
-                  type="button"
-                  title={action.title}
-                  aria-label={action.title}
-                  onClick={() => runAction(action)}
-                  className="grid size-7 place-items-center rounded-md border border-border font-mono text-[11.5px] text-muted"
-                >
-                  {action.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/*
-          Switching to preview and back never touches the stored text: the
-          markdown is the single representation, and preview is a render of
-          it. That is what makes the round-trip in product spec §6 lossless
-          by construction rather than by careful conversion.
-        */}
-        {mode === "markdown" ? (
+        <div className="flex-1 overflow-auto">
           <textarea
             ref={bodyRef}
             value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={16}
+            onChange={(e) => handleBodyChange(e.target.value)}
+            onBlur={flush}
+            onKeyDown={handleKeyDown}
             aria-label="Note body"
-            placeholder="# Heading&#10;&#10;- [ ] a checklist item&#10;&#10;> a quote"
-            className="w-full resize-y rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] leading-relaxed text-text outline-none placeholder:text-muted"
+            placeholder="Start writing…"
+            className="h-full min-h-full w-full resize-none border-none bg-transparent font-serif text-[16.5px] leading-[1.65] text-text outline-none placeholder:italic placeholder:text-muted"
           />
-        ) : (
-          <div className="min-h-80 rounded-input border border-border px-3.5 py-3">
-            {body.trim() ? (
-              <Markdown>{body}</Markdown>
-            ) : (
-              <p className="m-0 font-serif text-[15px] italic text-muted">
-                nothing written down yet
-              </p>
-            )}
-          </div>
-        )}
+        </div>
       </div>
+    </div>
+  );
+}
 
-      <ModalActions
-        destructive={
-          note ? (
-            <Button variant="outline" onClick={() => remove.mutate()}>
-              delete
-            </Button>
-          ) : null
-        }
-      >
-        <Button variant="outline" onClick={onClose}>
-          cancel
-        </Button>
-        <Button onClick={() => save.mutate()} disabled={save.isPending}>
-          save
-        </Button>
-      </ModalActions>
-    </Modal>
+/* The system has no icon font and no emoji — a handful of hand-set 24×24
+   stroke-line SVGs, stroke-width 2, round caps, currentColor
+   (design-reference/guidelines/iconography.html). */
+function TrashGlyph() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M4 7h16" />
+      <path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" />
+      <path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
+    </svg>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 
 import { AppError, userMessage } from "@/core/errors";
 import { newId } from "@/core/ids";
@@ -21,12 +21,49 @@ import {
   KIND_LABELS,
   type AccountKind,
   type AccountView,
+  type BudgetGroupView,
+  type BudgetView,
   type CategoryView,
   type TransactionView,
 } from "../schema";
 
 const invalidateFinance = (queryClient: ReturnType<typeof useQueryClient>) =>
   queryClient.invalidateQueries({ queryKey: ["finance"] });
+
+/**
+ * A category can back budgets in more than one group (spec: a "Food" budget
+ * in a trip group and a separate everyday "Food" budget resolve to the same
+ * category). Flat lists — the transaction category dropdown, the
+ * transactions filter pills — lose that context, so this maps each grouped
+ * category to its group's name for a "Group - Category" label.
+ */
+export function useCategoryGroupLabels(month: string) {
+  const { data } = useQuery({
+    queryKey: ["finance", "budgets", month],
+    queryFn: () =>
+      api.get<{ groups: BudgetGroupView[]; ungrouped: BudgetView[] }>(
+        `/api/finance/budgets?month=${month}`,
+      ),
+  });
+
+  return useMemo(() => {
+    const map = new Map<string, string>();
+    for (const group of data?.groups ?? []) {
+      for (const budget of group.budgets) {
+        map.set(budget.categoryId, group.name);
+      }
+    }
+    return map;
+  }, [data]);
+}
+
+export function categoryLabel(
+  category: { id: string; name: string },
+  groupLabels: Map<string, string>,
+): string {
+  const group = groupLabels.get(category.id);
+  return group ? `${group} - ${category.name}` : category.name;
+}
 
 // ---------------------------------------------------------------------------
 
@@ -277,16 +314,19 @@ export function TransactionModal({
   transaction,
   accounts,
   categories,
+  month,
   today,
   onClose,
 }: {
   transaction: TransactionView | null;
   accounts: AccountView[];
   categories: CategoryView[];
+  month: string;
   today: string;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  const groupLabels = useCategoryGroupLabels(month);
   const isTransferRow = transaction?.type === "TRANSFER";
 
   const [mode, setMode] = useState<"EXPENSE" | "INCOME" | "TRANSFER">(
@@ -450,7 +490,7 @@ export function TransactionModal({
               <option value="">uncategorised</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
-                  {category.name}
+                  {categoryLabel(category, groupLabels)}
                 </option>
               ))}
             </select>
@@ -622,16 +662,14 @@ export function IncomeModal({
 // ---------------------------------------------------------------------------
 
 export function BudgetModal({
-  categories,
   groups,
   onClose,
 }: {
-  categories: CategoryView[];
   groups: { id: string; name: string }[];
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? "");
+  const [name, setName] = useState("");
   const [limitAmount, setLimitAmount] = useState("");
   const [groupId, setGroupId] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -640,9 +678,8 @@ export function BudgetModal({
     mutationFn: () =>
       api.post("/api/finance/budgets", {
         id: newId(),
-        categoryId,
+        name,
         limitAmount,
-        period: "MONTHLY",
         groupId: groupId || null,
       }),
     onSuccess: () => {
@@ -659,29 +696,28 @@ export function BudgetModal({
       kicker="NEW BUDGET"
       title="New budget"
       width={420}
+      titleVisible={false}
     >
-      <div className="mt-5 flex flex-col gap-4">
-        <label className="flex flex-col gap-1.5">
-          <span className="kicker">Category</span>
-          <select
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
-          >
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </label>
+      <Input
+        variant="ghost"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Budget name"
+        aria-label="Budget name"
+        autoFocus
+        className="mt-3"
+      />
 
+      <div className="mt-4 flex flex-col gap-4">
         <label className="flex flex-col gap-1.5">
-          <span className="kicker">Monthly cap</span>
+          <span className="kicker">Cap (PHP)</span>
           <Input
+            tinted
+            className="border-none"
             value={limitAmount}
             onChange={(e) => setLimitAmount(e.target.value)}
             inputMode="decimal"
+            placeholder="0"
           />
         </label>
 
@@ -690,7 +726,7 @@ export function BudgetModal({
           <select
             value={groupId}
             onChange={(e) => setGroupId(e.target.value)}
-            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
+            className="w-full rounded-input border-none bg-text/5 px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
           >
             <option value="">No group</option>
             {groups.map((group) => (
@@ -707,8 +743,56 @@ export function BudgetModal({
         <Button variant="outline" onClick={onClose}>
           cancel
         </Button>
-        <Button onClick={() => save.mutate()} disabled={!categoryId || !limitAmount}>
-          save
+        <Button onClick={() => save.mutate()} disabled={!name.trim() || !limitAmount}>
+          add
+        </Button>
+      </ModalActions>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export function BudgetGroupModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const save = useMutation({
+    mutationFn: () => api.post("/api/finance/budget-groups", { id: newId(), name }),
+    onSuccess: () => {
+      void invalidateFinance(queryClient);
+      onClose();
+    },
+    onError: (e) => setError(userMessage(e, "That didn't save.")),
+  });
+
+  return (
+    <Modal
+      open
+      onOpenChange={(open) => !open && onClose()}
+      kicker="NEW GROUP"
+      title="New budget group"
+      width={360}
+      titleVisible={false}
+    >
+      <Input
+        variant="ghost"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Group name"
+        aria-label="Group name"
+        autoFocus
+        className="mt-3"
+      />
+
+      {error && <p className="m-0 mt-4 font-mono text-[11.5px] text-accent-red">{error}</p>}
+      <ModalActions>
+        <Button variant="outline" onClick={onClose}>
+          cancel
+        </Button>
+        <Button onClick={() => save.mutate()} disabled={!name.trim()}>
+          add
         </Button>
       </ModalActions>
     </Modal>

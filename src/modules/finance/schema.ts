@@ -118,7 +118,7 @@ export const deleteBudgetGroupSchema = z.object({ id: z.uuid() });
 export const createBudgetSchema = z
   .object({
     id: z.uuid(),
-    categoryId: z.uuid("Pick a category."),
+    name: z.string().trim().min(1, "A budget needs a name.").max(80),
     limitAmount: moneyString,
     period: z.enum(["MONTHLY", "CUSTOM"]).default("MONTHLY"),
     periodStart: isoDate.nullable().optional(),
@@ -136,6 +136,18 @@ export const createBudgetSchema = z
   });
 
 export const deleteBudgetSchema = z.object({ id: z.uuid() });
+
+export const updateBudgetSchema = z.object({
+  id: z.uuid(),
+  name: z.string().trim().min(1, "A budget needs a name.").max(80).optional(),
+  limitAmount: moneyString.optional(),
+  groupId: z.uuid().nullable().optional(),
+});
+
+export const updateBudgetGroupSchema = z.object({
+  id: z.uuid(),
+  name: z.string().trim().min(1, "A group needs a name.").max(80),
+});
 
 export const createDebtSchema = z.object({
   id: z.uuid(),
@@ -189,6 +201,8 @@ export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
 export type UpdateTransactionInput = z.infer<typeof updateTransactionSchema>;
 export type CreateTransferInput = z.infer<typeof createTransferSchema>;
 export type CreateBudgetInput = z.infer<typeof createBudgetSchema>;
+export type UpdateBudgetInput = z.infer<typeof updateBudgetSchema>;
+export type UpdateBudgetGroupInput = z.infer<typeof updateBudgetGroupSchema>;
 export type CreateDebtInput = z.infer<typeof createDebtSchema>;
 export type UpdateDebtInput = z.infer<typeof updateDebtSchema>;
 export type UpsertIncomeInput = z.infer<typeof upsertIncomeSchema>;

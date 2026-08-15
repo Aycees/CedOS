@@ -4,8 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { useState } from "react";
 
-import { formatListDate } from "@/core/date";
-import { formatMoney, isOverdrawn, progress } from "@/core/money";
+import { formatListDate, formatShortDate } from "@/core/date";
+import { userMessage } from "@/core/errors";
+import { add, formatMoney, isOverdrawn, money, progress, subtract } from "@/core/money";
 import { api } from "@/core/mutation/client";
 import { newId } from "@/core/ids";
 import { Button } from "@/core/ui/button";
@@ -13,7 +14,7 @@ import { Card } from "@/core/ui/card";
 import { cn } from "@/core/ui/cn";
 import { Input } from "@/core/ui/input";
 import { Modal, ModalActions } from "@/core/ui/modal";
-import { EmptyState } from "@/core/ui/page-header";
+import { EmptyState, PageHeader } from "@/core/ui/page-header";
 
 import {
   KIND_LABELS,
@@ -27,11 +28,13 @@ import {
 } from "../schema";
 import {
   AccountModal,
+  BudgetGroupModal,
   BudgetModal,
-  CategoryModal,
   IncomeModal,
   TransactionModal,
+  categoryLabel,
   useAccountDelete,
+  useCategoryGroupLabels,
 } from "./money-modals";
 
 type Tab = "overview" | "transactions" | "budget" | "debts" | "accounts";
@@ -70,115 +73,130 @@ export function FinancePage({
   const hasAccount = accounts.length > 0;
 
   return (
-    <div className="p-8">
-      <div className="mb-5 flex flex-wrap items-end gap-3">
-        <div
-          role="tablist"
-          aria-label="Money view"
-          className="flex flex-1 min-w-fit gap-0.5 overflow-x-auto border-b border-dashed border-border"
-        >
-          {(
-            [
-              { label: "Overview", value: "overview" },
-              { label: "Transactions", value: "transactions" },
-              { label: "Budget", value: "budget" },
-              { label: "Debts", value: "debts" },
-              { label: "Accounts", value: "accounts" },
-            ] as const
-          ).map((option) => {
-            const selected = tab === option.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                onClick={() => setTab(option.value)}
-                className={cn(
-                  "whitespace-nowrap pt-2.5 pb-3 pl-3.75 pr-3.75 font-mono text-[12.5px]",
-                  selected
-                    ? "text-text shadow-[inset_0_-2px_0_var(--accent-default)]"
-                    : "text-muted",
-                )}
-              >
-                {option.label}
-              </button>
-            );
-          })}
+    <>
+      <PageHeader
+        kicker={`Finance · ${data.monthLabel}`}
+        title="Money"
+        actions={
+          <Button disabled={!hasAccount} onClick={() => setTxModal({ tx: null })}>
+            + transaction
+          </Button>
+        }
+      />
+      <div className="flex-1 overflow-auto">
+        <div className="p-4 sm:p-6 lg:p-8">
+          <div className="mb-5 flex flex-wrap items-end gap-3">
+            <div
+              role="tablist"
+              aria-label="Money view"
+              className="flex flex-1 min-w-0 gap-0.5 overflow-x-auto border-b border-dashed border-border"
+            >
+              {(
+                [
+                  { label: "Overview", value: "overview" },
+                  { label: "Transactions", value: "transactions" },
+                  { label: "Budget", value: "budget" },
+                  { label: "Debts", value: "debts" },
+                  { label: "Accounts", value: "accounts" },
+                ] as const
+              ).map((option) => {
+                const selected = tab === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => setTab(option.value)}
+                    className={cn(
+                      "whitespace-nowrap pt-2.5 pb-3 pl-3.75 pr-3.75 font-mono text-[12.5px]",
+                      selected
+                        ? "text-text shadow-[inset_0_-2px_0_var(--accent-default)]"
+                        : "text-muted",
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {!hasAccount && (
+            <p className="mb-4 font-mono text-[11.5px] text-muted">
+              add an account first — every transaction belongs to one
+            </p>
+          )}
+
+          {tab === "overview" && (
+            <Overview
+              data={data}
+              today={today}
+              month={month}
+              onNavigate={setTab}
+              onNewAccount={() => setAccountModal({ account: null, fromAccountsTab: false })}
+              onEditAccount={(account) =>
+                setAccountModal({ account, fromAccountsTab: false })
+              }
+            />
+          )}
+          {tab === "transactions" && (
+            <Transactions
+              categories={cats}
+              month={month}
+              onEdit={(tx) => setTxModal({ tx })}
+            />
+          )}
+          {tab === "budget" && <Budgets month={month} />}
+          {tab === "debts" && <Debts accounts={accounts} today={today} />}
+          {tab === "accounts" && (
+            <Accounts
+              accounts={accounts}
+              onNewAccount={() => setAccountModal({ account: null, fromAccountsTab: true })}
+              onEditAccount={(account) =>
+                setAccountModal({ account, fromAccountsTab: true })
+              }
+            />
+          )}
+
+          {txModal && (
+            <TransactionModal
+              transaction={txModal.tx}
+              accounts={accounts}
+              categories={cats}
+              month={month}
+              today={today}
+              onClose={() => setTxModal(null)}
+            />
+          )}
+          {accountModal && (
+            <AccountModal
+              account={accountModal.account}
+              accounts={accounts}
+              allowBalanceEdit={accountModal.fromAccountsTab}
+              onClose={() => setAccountModal(null)}
+            />
+          )}
         </div>
-        <Button
-          className="mb-0.5"
-          disabled={!hasAccount}
-          onClick={() => setTxModal({ tx: null })}
-        >
-          + transaction
-        </Button>
       </div>
-
-      {!hasAccount && (
-        <p className="mb-4 font-mono text-[11.5px] text-muted">
-          add an account first — every transaction belongs to one
-        </p>
-      )}
-
-      {tab === "overview" && (
-        <Overview
-          data={data}
-          today={today}
-          onNewAccount={() => setAccountModal({ account: null, fromAccountsTab: false })}
-          onEditAccount={(account) =>
-            setAccountModal({ account, fromAccountsTab: false })
-          }
-        />
-      )}
-      {tab === "transactions" && (
-        <Transactions
-          categories={cats}
-          month={month}
-          onEdit={(tx) => setTxModal({ tx })}
-        />
-      )}
-      {tab === "budget" && <Budgets categories={cats} month={month} />}
-      {tab === "debts" && <Debts accounts={accounts} today={today} />}
-      {tab === "accounts" && (
-        <Accounts
-          accounts={accounts}
-          onNewAccount={() => setAccountModal({ account: null, fromAccountsTab: true })}
-          onEditAccount={(account) =>
-            setAccountModal({ account, fromAccountsTab: true })
-          }
-        />
-      )}
-
-      {txModal && (
-        <TransactionModal
-          transaction={txModal.tx}
-          accounts={accounts}
-          categories={cats}
-          today={today}
-          onClose={() => setTxModal(null)}
-        />
-      )}
-      {accountModal && (
-        <AccountModal
-          account={accountModal.account}
-          accounts={accounts}
-          allowBalanceEdit={accountModal.fromAccountsTab}
-          onClose={() => setAccountModal(null)}
-        />
-      )}
-    </div>
+    </>
   );
 }
+
+const OVERVIEW_BUDGET_CAP = 5;
 
 function Overview({
   data,
   today,
+  month,
+  onNavigate,
   onNewAccount,
   onEditAccount,
 }: {
   data: FinanceOverview;
   today: string;
+  month: string;
+  onNavigate: (tab: Tab) => void;
   onNewAccount: () => void;
   onEditAccount: (account: AccountView) => void;
 }) {
@@ -192,105 +210,232 @@ function Overview({
     : null;
 
   return (
-    <div className="flex max-w-180 flex-col gap-4.5">
-      <Card>
-        <button
-          type="button"
-          onClick={() => setEditingIncome(true)}
-          aria-label={data.income ? "Edit allowance" : "Set allowance"}
-          className="kicker block text-left"
-        >
-          {data.income
-            ? `${data.income.name} · ${data.monthLabel}`
-            : `Balance · ${data.monthLabel}`}
-        </button>
-
-        <div className="mt-2 flex items-baseline gap-2.5">
-          <span className="font-mono text-[38px] tracking-[-0.02em]">
-            {formatMoney(remaining ?? data.totalBalance)}
-          </span>
-          <span className="font-mono text-[12px] text-muted">
-            {data.income ? "remaining" : "across accounts"}
-          </span>
-        </div>
-
-        {data.income ? (
-          <>
-            <div className="mt-2.5 h-1.75 overflow-hidden rounded-sm bg-[color-mix(in_srgb,var(--text)_9%,transparent)]">
-              <div
-                className={cn(
-                  "h-full",
-                  spentFraction > 1 ? "bg-accent-red" : "bg-accent",
-                )}
-                style={{ width: `${Math.min(100, spentFraction * 100)}%` }}
-              />
-            </div>
-            <div className="mt-2 flex font-mono text-[11px] text-muted">
-              <span>spent {formatMoney(data.monthSpent)}</span>
-              <span className="ml-auto">of {formatMoney(data.income.amount)}</span>
-            </div>
-          </>
-        ) : (
+    <div className="grid max-w-260 grid-cols-1 gap-4.5 lg:grid-cols-2 lg:items-start">
+      <div className="flex flex-col gap-4.5">
+        <Card>
           <button
             type="button"
             onClick={() => setEditingIncome(true)}
-            className="mt-2 font-mono text-[11.5px] text-accent"
+            aria-label={data.income ? "Edit allowance" : "Set allowance"}
+            className="kicker block text-left"
           >
-            + set an allowance
+            {data.income
+              ? `${data.income.name} · ${data.monthLabel}`
+              : `Balance · ${data.monthLabel}`}
+          </button>
+
+          <div className="mt-2 flex items-baseline gap-2.5">
+            <span className="font-mono text-[38px] tracking-[-0.02em]">
+              {formatMoney(remaining ?? data.totalBalance)}
+            </span>
+            <span className="font-mono text-[12px] text-muted">
+              {data.income ? "remaining" : "across accounts"}
+            </span>
+          </div>
+
+          {data.income ? (
+            <>
+              <div className="mt-2.5 h-1.75 overflow-hidden rounded-sm bg-[color-mix(in_srgb,var(--text)_9%,transparent)]">
+                <div
+                  className={cn(
+                    "h-full",
+                    spentFraction > 1 ? "bg-accent-red" : "bg-accent",
+                  )}
+                  style={{ width: `${Math.min(100, spentFraction * 100)}%` }}
+                />
+              </div>
+              <div className="mt-2 flex font-mono text-[11px] text-muted">
+                <span>spent {formatMoney(data.monthSpent)}</span>
+                <span className="ml-auto">of {formatMoney(data.income.amount)}</span>
+              </div>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditingIncome(true)}
+              className="mt-2 font-mono text-[11.5px] text-accent"
+            >
+              + set an allowance
+            </button>
+          )}
+
+          {editingIncome && (
+            <IncomeModal
+              income={data.income}
+              today={today}
+              onClose={() => setEditingIncome(false)}
+            />
+          )}
+
+          <div className="mt-4 flex flex-wrap gap-2.5">
+            {data.accounts.map((account) => (
+              <button
+                key={account.id}
+                type="button"
+                onClick={() => onEditAccount(account)}
+                aria-label={`Edit ${account.name}`}
+                className="min-w-30 rounded-input border border-border px-3.5 py-2.5 text-left"
+              >
+                <span className="kicker block">{KIND_LABELS[account.kind]}</span>
+                <span className="mt-1 block font-mono text-[12.5px]">{account.name}</span>
+                <span
+                  className={cn(
+                    "mt-0.5 block font-mono text-[13px]",
+                    // Product spec §9: overdrawn must read as a warning state,
+                    // not a bare negative number the user might skim past.
+                    isOverdrawn(account.balance) && "text-accent-red",
+                  )}
+                >
+                  {formatMoney(account.balance)}
+                </span>
+              </button>
+            ))}
+
+            <Button variant="dashed" className="min-w-30" onClick={onNewAccount}>
+              + account
+            </Button>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="mb-1 flex items-baseline">
+            <h2 className="m-0 font-serif text-[18px] font-normal">Recent</h2>
+            <button
+              type="button"
+              onClick={() => onNavigate("transactions")}
+              className="ml-auto font-mono text-[11.5px] text-accent"
+            >
+              all →
+            </button>
+          </div>
+          {data.recent.length === 0 ? (
+            <p className="m-0 py-2 font-serif text-[15px] italic text-muted">
+              no transactions yet
+            </p>
+          ) : (
+            data.recent.slice(0, 5).map((tx) => <TransactionRow key={tx.id} tx={tx} />)
+          )}
+        </Card>
+      </div>
+
+      <div className="flex flex-col gap-4.5">
+        <OverviewBudgets month={month} onNavigate={onNavigate} />
+        <OverviewDebts onNavigate={onNavigate} />
+      </div>
+    </div>
+  );
+}
+
+function OverviewBudgets({
+  month,
+  onNavigate,
+}: {
+  month: string;
+  onNavigate: (tab: Tab) => void;
+}) {
+  const { data } = useQuery({
+    queryKey: ["finance", "budgets", month],
+    queryFn: () =>
+      api.get<{ groups: BudgetGroupView[]; ungrouped: BudgetView[] }>(
+        `/api/finance/budgets?month=${month}`,
+      ),
+  });
+
+  const budgets = [
+    ...(data?.groups.flatMap((group) => group.budgets) ?? []),
+    ...(data?.ungrouped ?? []),
+  ];
+  const shown = budgets.slice(0, OVERVIEW_BUDGET_CAP);
+
+  return (
+    <Card>
+      <div className="mb-1 flex items-baseline">
+        <h2 className="m-0 font-serif text-[18px] font-normal">Budgets</h2>
+        {budgets.length > shown.length && (
+          <button
+            type="button"
+            onClick={() => onNavigate("budget")}
+            className="ml-auto font-mono text-[11.5px] text-accent"
+          >
+            all →
           </button>
         )}
+      </div>
+      {shown.length === 0 ? (
+        <p className="m-0 py-2 font-serif text-[15px] italic text-muted">no budgets yet</p>
+      ) : (
+        shown.map((budget) => <OverviewBudgetRow key={budget.id} budget={budget} />)
+      )}
+    </Card>
+  );
+}
 
-        {editingIncome && (
-          <IncomeModal
-            income={data.income}
-            today={today}
-            onClose={() => setEditingIncome(false)}
-          />
-        )}
+function OverviewBudgetRow({ budget }: { budget: BudgetView }) {
+  const fraction = progress(budget.spent, budget.limitAmount);
+  const over = fraction > 1;
 
-        <div className="mt-4 flex flex-wrap gap-2.5">
-          {data.accounts.map((account) => (
-            <button
-              key={account.id}
-              type="button"
-              onClick={() => onEditAccount(account)}
-              aria-label={`Edit ${account.name}`}
-              className="min-w-30 rounded-input border border-border px-3.5 py-2.5 text-left"
-            >
-              <span className="kicker block">{KIND_LABELS[account.kind]}</span>
-              <span className="mt-1 block font-mono text-[12.5px]">{account.name}</span>
-              <span
-                className={cn(
-                  "mt-0.5 block font-mono text-[13px]",
-                  // Product spec §9: overdrawn must read as a warning state,
-                  // not a bare negative number the user might skim past.
-                  isOverdrawn(account.balance) && "text-accent-red",
-                )}
-              >
-                {formatMoney(account.balance)}
-              </span>
-            </button>
-          ))}
-
-          <Button variant="dashed" className="min-w-30" onClick={onNewAccount}>
-            + account
-          </Button>
-        </div>
-      </Card>
-
-      <Card>
-        <div className="mb-1 flex items-baseline">
-          <h2 className="m-0 font-serif text-[18px] font-normal">Recent</h2>
-        </div>
-        {data.recent.length === 0 ? (
-          <p className="m-0 py-2 font-serif text-[15px] italic text-muted">
-            no transactions yet
-          </p>
-        ) : (
-          data.recent.map((tx) => <TransactionRow key={tx.id} tx={tx} />)
-        )}
-      </Card>
+  return (
+    <div className="row-divider list-row">
+      <div className="flex items-baseline gap-2.5">
+        <span className="min-w-0 flex-1 truncate font-mono text-[13.5px]">
+          {budget.categoryName}
+        </span>
+        <span
+          className={cn("flex-none font-mono text-[12.5px]", over ? "text-accent-red" : "text-muted")}
+        >
+          {formatMoney(budget.spent)} / {formatMoney(budget.limitAmount)}
+        </span>
+      </div>
+      <div className="mt-2 h-1.75 overflow-hidden rounded-sm bg-[color-mix(in_srgb,var(--text)_9%,transparent)]">
+        <div
+          className={cn("h-full", over ? "bg-accent-red" : "bg-accent")}
+          style={{
+            width: `${Math.min(100, fraction * 100)}%`,
+            background: over ? undefined : `var(--accent-${budget.categoryColor})`,
+          }}
+        />
+      </div>
     </div>
+  );
+}
+
+function OverviewDebts({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
+  const { data: debts = [] } = useQuery({
+    queryKey: ["finance", "debts"],
+    queryFn: () => api.get<DebtView[]>("/api/finance/debts"),
+  });
+
+  const outstanding = debts.filter((debt) => !debt.settledAt);
+  const owedToMe = outstanding.filter((debt) => debt.direction === "OWED_TO_ME");
+  const iOwe = outstanding.filter((debt) => debt.direction === "I_OWE");
+  const owedToMeTotal = owedToMe.reduce((sum, debt) => sum + Number(debt.amount), 0);
+  const iOweTotal = iOwe.reduce((sum, debt) => sum + Number(debt.amount), 0);
+
+  return (
+    <Card>
+      <h2 className="m-0 mb-3.5 font-serif text-[18px] font-normal">Debts</h2>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <div className="kicker">owed to me</div>
+          <div className="mt-1.5 font-mono text-[22px] tracking-[-0.01em] text-accent-green">
+            {formatMoney(owedToMeTotal)}
+          </div>
+        </div>
+        <div>
+          <div className="kicker">I owe</div>
+          <div className="mt-1.5 font-mono text-[22px] tracking-[-0.01em] text-accent-red">
+            {formatMoney(iOweTotal)}
+          </div>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => onNavigate("debts")}
+        className="mt-4 w-full rounded-control border border-dashed border-border-strong py-2.5 text-center font-mono text-[12px] text-muted"
+      >
+        settle up →
+      </button>
+    </Card>
   );
 }
 
@@ -454,7 +599,7 @@ function Transactions({
 }) {
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [newCategory, setNewCategory] = useState(false);
+  const groupLabels = useCategoryGroupLabels(month);
 
   const params = new URLSearchParams();
   if (query.trim()) params.set("q", query.trim());
@@ -467,69 +612,133 @@ function Transactions({
   });
 
   return (
-    <div className="max-w-205">
-      <div className="mb-4 flex flex-wrap items-center gap-2.5">
+    <div className="w-full">
+      <div className="mb-5 flex flex-col gap-3.5">
         <Input
-          className="max-w-55"
+          tinted
+          className="w-full border-none py-2.5 text-[13px] sm:max-w-96"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search transactions"
           aria-label="Search transactions"
         />
-        <select
-          value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value)}
-          aria-label="Filter by category"
-          className="rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
-        >
-          <option value="">all categories</option>
-          {categories.map((category) => (
-            <option key={category.id} value={category.id}>
-              {category.name}
-            </option>
-          ))}
-        </select>
-        <Button size="sm" variant="outline" onClick={() => setNewCategory(true)}>
-          + category
-        </Button>
-        {(query || categoryId) && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setQuery("");
-              setCategoryId("");
-            }}
-          >
-            clear filters
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by category">
+            <CategoryChip label="All" selected={categoryId === ""} onClick={() => setCategoryId("")} />
+            {categories.map((category) => (
+              <CategoryChip
+                key={category.id}
+                label={categoryLabel(category, groupLabels)}
+                selected={categoryId === category.id}
+                onClick={() => setCategoryId(category.id)}
+              />
+            ))}
+          </div>
+          {(query || categoryId) && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setQuery("");
+                setCategoryId("");
+              }}
+            >
+              clear filters
+            </Button>
+          )}
+        </div>
       </div>
 
       {rows.length === 0 ? (
         <EmptyState line={query || categoryId ? "no transactions match" : "no transactions logged"} />
       ) : (
-        <Card className="pb-3">
+        <div className="flex flex-col">
           {rows.map((tx) => (
-            <TransactionRow key={tx.id} tx={tx} onEdit={onEdit} />
+            <TransactionListRow key={tx.id} tx={tx} onEdit={onEdit} />
           ))}
-        </Card>
+        </div>
       )}
-
-      {newCategory && <CategoryModal onClose={() => setNewCategory(false)} />}
     </div>
   );
 }
 
-function Budgets({
-  categories,
-  month,
+function CategoryChip({
+  label,
+  selected,
+  onClick,
 }: {
-  categories: CategoryView[];
-  month: string;
+  label: string;
+  selected: boolean;
+  onClick: () => void;
 }) {
-  const queryClient = useQueryClient();
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onClick}
+      className={cn(
+        "whitespace-nowrap rounded-pill border px-3.5 py-1.5 font-mono text-[12px]",
+        selected ? "border-accent bg-accent/10 text-text" : "border-border text-muted",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
+function TransactionListRow({
+  tx,
+  onEdit,
+}: {
+  tx: TransactionView;
+  onEdit?: (tx: TransactionView) => void;
+}) {
+  const negative = Number(tx.amount) < 0;
+  const meta =
+    tx.type === "TRANSFER"
+      ? `${tx.transferFrom} → ${tx.transferTo}`
+      : tx.categoryName
+        ? `${tx.categoryName} · ${tx.accountName}`
+        : tx.accountName;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onEdit?.(tx)}
+      aria-label={`Edit ${tx.name}`}
+      className="row-divider list-row flex w-full items-center gap-5 px-3 text-left"
+    >
+      <span className="w-15 flex-none font-mono text-[12px] text-muted">
+        {formatShortDate(tx.occurredOn)}
+      </span>
+      <span
+        aria-hidden
+        className="size-2.5 flex-none rounded-full"
+        style={{
+          background: tx.categoryColor ? `var(--accent-${tx.categoryColor})` : "var(--dot)",
+        }}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[15px]">{tx.name}</span>
+        <span className="mt-0.5 block truncate font-mono text-[12px] text-muted">{meta}</span>
+      </span>
+      <span
+        className={cn(
+          "flex-none font-mono text-[16px]",
+          // A transfer is neither income nor expense, so it stays neutral
+          // rather than being coloured as one or the other.
+          tx.type === "TRANSFER" ? "text-muted" : negative ? "text-text" : "text-accent-green",
+        )}
+      >
+        {formatMoney(tx.amount)}
+      </span>
+    </button>
+  );
+}
+
+function Budgets({ month }: { month: string }) {
   const [creating, setCreating] = useState(false);
+  const [creatingGroup, setCreatingGroup] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const { data } = useQuery({
@@ -540,64 +749,52 @@ function Budgets({
       ),
   });
 
-  const newGroup = useMutation({
-    mutationFn: (name: string) =>
-      api.post("/api/finance/budget-groups", { id: newId(), name }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["finance"] }),
-  });
-
   const groups = data?.groups ?? [];
   const ungrouped = data?.ungrouped ?? [];
 
   return (
-    <div className="max-w-180">
-      <div className="mb-4 flex items-center gap-2.5">
-        <Button size="sm" disabled={categories.length === 0} onClick={() => setCreating(true)}>
-          + new budget
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            const name = window.prompt("Group name");
-            if (name?.trim()) newGroup.mutate(name.trim());
-          }}
-        >
+    <div className="w-full">
+      <div className="mb-5 flex flex-wrap items-center justify-end gap-2.5">
+        <Button size="sm" variant="outline" onClick={() => setCreatingGroup(true)}>
           + new group
+        </Button>
+        <Button size="sm" onClick={() => setCreating(true)}>
+          + new budget
         </Button>
       </div>
 
       {groups.length === 0 && ungrouped.length === 0 ? (
         <EmptyState line="no budgets yet" />
       ) : (
-        <div className="flex flex-col gap-4.5">
+        <div className="flex flex-col gap-3">
           {groups.map((group) => {
             const isCollapsed = collapsed.has(group.id);
             return (
               <Card key={group.id}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setCollapsed((current) => {
-                      const next = new Set(current);
-                      if (next.has(group.id)) next.delete(group.id);
-                      else next.add(group.id);
-                      return next;
-                    })
-                  }
-                  aria-expanded={!isCollapsed}
-                  className="flex w-full items-baseline gap-2.5 text-left"
-                >
-                  <span aria-hidden className="font-mono text-[11px] text-muted">
+                <div className="flex flex-wrap items-baseline gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCollapsed((current) => {
+                        const next = new Set(current);
+                        if (next.has(group.id)) next.delete(group.id);
+                        else next.add(group.id);
+                        return next;
+                      })
+                    }
+                    aria-expanded={!isCollapsed}
+                    aria-label={isCollapsed ? "Expand group" : "Collapse group"}
+                    className="font-mono text-[12px] text-muted"
+                  >
                     {isCollapsed ? "›" : "⌄"}
-                  </span>
-                  <h2 className="m-0 font-serif text-[17px] font-normal">{group.name}</h2>
+                  </button>
+                  <BudgetGroupTitle group={group} />
                   {/* The group total aggregates its members, so collapsing
                       cannot lose or desync it (product spec §9). */}
-                  <span className="ml-auto font-mono text-[11.5px] text-muted">
+                  <span className="ml-auto font-mono text-[12.5px] text-muted">
                     {formatMoney(group.spentTotal)} of {formatMoney(group.limitTotal)}
                   </span>
-                </button>
+                </div>
 
                 {!isCollapsed &&
                   group.budgets.map((budget) => (
@@ -607,50 +804,105 @@ function Budgets({
             );
           })}
 
-          {ungrouped.length > 0 && (
-            <Card>
-              <div className="kicker mb-1">No group</div>
-              {ungrouped.map((budget) => (
-                <BudgetRow key={budget.id} budget={budget} />
-              ))}
+          {ungrouped.map((budget) => (
+            <Card key={budget.id}>
+              <BudgetRow budget={budget} divider={false} />
             </Card>
-          )}
+          ))}
         </div>
       )}
 
       {creating && (
         <BudgetModal
-          categories={categories}
           groups={groups.map((g) => ({ id: g.id, name: g.name }))}
           onClose={() => setCreating(false)}
         />
       )}
+      {creatingGroup && <BudgetGroupModal onClose={() => setCreatingGroup(false)} />}
     </div>
   );
 }
 
-function BudgetRow({ budget }: { budget: BudgetView }) {
+function BudgetGroupTitle({ group }: { group: BudgetGroupView }) {
   const queryClient = useQueryClient();
-  const fraction = progress(budget.spent, budget.limitAmount);
-  const over = fraction > 1;
-
-  const remove = useMutation({
-    mutationFn: () => api.delete("/api/finance/budgets", { id: budget.id }),
+  const rename = useMutation({
+    mutationFn: (name: string) =>
+      api.patch("/api/finance/budget-groups", { id: group.id, name }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["finance"] }),
   });
 
   return (
-    <div className="row-divider list-row group">
+    <EditableField
+      value={group.name}
+      onCommit={(name) => rename.mutate(name)}
+      ariaLabel={`${group.name} group name`}
+      className="font-serif text-[19px] font-normal"
+    />
+  );
+}
+
+function BudgetRow({ budget, divider = true }: { budget: BudgetView; divider?: boolean }) {
+  const queryClient = useQueryClient();
+  const [adjustAmount, setAdjustAmount] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const fraction = progress(budget.spent, budget.limitAmount);
+  const over = fraction > 1;
+  const leftRaw = subtract(budget.limitAmount, budget.spent);
+  const left = leftRaw.isNegative() ? money(0) : leftRaw;
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["finance"] });
+
+  const rename = useMutation({
+    mutationFn: (name: string) => api.patch("/api/finance/budgets", { id: budget.id, name }),
+    onSuccess: invalidate,
+  });
+
+  const setCap = useMutation({
+    mutationFn: (limitAmount: string) =>
+      api.patch("/api/finance/budgets", { id: budget.id, limitAmount }),
+    onSuccess: () => {
+      invalidate();
+      setAdjustAmount("");
+      setError(null);
+    },
+    onError: (e) => setError(userMessage(e, "That didn't save.")),
+  });
+
+  const remove = useMutation({
+    mutationFn: () => api.delete("/api/finance/budgets", { id: budget.id }),
+    onSuccess: invalidate,
+  });
+
+  const delta = money(adjustAmount || 0);
+  const canSubtract =
+    delta.isPositive() && subtract(budget.limitAmount, delta.toString()).greaterThanOrEqualTo(
+      money(budget.spent),
+    );
+  const canAdd = delta.isPositive();
+
+  const adjustCap = (sign: 1 | -1) => {
+    if (delta.isZero()) return;
+    const next = sign === 1 ? add(budget.limitAmount, delta) : subtract(budget.limitAmount, delta);
+    setCap.mutate(next.toFixed(2));
+  };
+
+  return (
+    <div className={cn("group", divider && "row-divider list-row")}>
       <div className="flex items-baseline gap-2.5">
         <span
           aria-hidden
-          className="size-2 flex-none rounded-full"
+          className="size-2.5 flex-none rounded-full"
           style={{ background: `var(--accent-${budget.categoryColor})` }}
         />
-        <span className="font-mono text-[12.5px]">{budget.categoryName}</span>
+        <EditableField
+          value={budget.categoryName}
+          onCommit={(name) => rename.mutate(name)}
+          ariaLabel={`${budget.categoryName} budget name`}
+          className="font-mono text-[13.5px]"
+        />
         <span
           className={cn(
-            "ml-auto font-mono text-[11.5px]",
+            "ml-auto font-mono text-[12.5px]",
             over ? "text-accent-red" : "text-muted",
           )}
         >
@@ -660,12 +912,12 @@ function BudgetRow({ budget }: { budget: BudgetView }) {
           type="button"
           aria-label={`Delete ${budget.categoryName} budget`}
           onClick={() => remove.mutate()}
-          className="font-mono text-[11px] text-muted opacity-0 group-hover:opacity-100 focus:opacity-100"
+          className="font-mono text-[12px] text-muted opacity-0 group-hover:opacity-100 focus:opacity-100"
         >
           ×
         </button>
       </div>
-      <div className="mt-1.5 h-1.5 overflow-hidden rounded-sm bg-[color-mix(in_srgb,var(--text)_9%,transparent)]">
+      <div className="mt-2 h-2 overflow-hidden rounded-sm bg-[color-mix(in_srgb,var(--text)_9%,transparent)]">
         <div
           className={cn("h-full", over ? "bg-accent-red" : "bg-accent")}
           style={{
@@ -674,6 +926,37 @@ function BudgetRow({ budget }: { budget: BudgetView }) {
           }}
         />
       </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className="font-mono text-[12.5px] text-muted">{formatMoney(left)} left</span>
+        <div className="ml-auto flex items-center gap-1.5">
+          <Input
+            tinted
+            value={adjustAmount}
+            onChange={(e) => setAdjustAmount(e.target.value)}
+            placeholder="amount"
+            inputMode="decimal"
+            aria-label={`Adjust ${budget.categoryName} cap`}
+            className="w-20 border-none py-1.5 text-[12.5px] sm:w-28"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!canSubtract || setCap.isPending}
+            onClick={() => adjustCap(-1)}
+          >
+            −
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!canAdd || setCap.isPending}
+            onClick={() => adjustCap(1)}
+          >
+            +
+          </Button>
+        </div>
+      </div>
+      {error && <p className="m-0 mt-1 font-mono text-[11px] text-accent-red">{error}</p>}
     </div>
   );
 }

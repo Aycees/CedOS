@@ -2,13 +2,15 @@ import { z } from "zod";
 
 import { CATEGORY_COLORS } from "@/modules/calendar/schema";
 
-export const ACCOUNT_KINDS = ["CASH", "EWALLET", "BANK"] as const;
+export const ACCOUNT_KINDS = ["CASH", "EWALLET", "BANK", "CREDIT", "OTHER"] as const;
 export type AccountKind = (typeof ACCOUNT_KINDS)[number];
 
 export const KIND_LABELS: Record<AccountKind, string> = {
   CASH: "Cash",
   EWALLET: "E-wallet",
   BANK: "Bank",
+  CREDIT: "Credit",
+  OTHER: "Other",
 };
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date like 2026-08-11.");
@@ -36,6 +38,13 @@ export const updateAccountSchema = z.object({
   name: z.string().trim().min(1, "An account needs a name.").max(80).optional(),
   kind: z.enum(ACCOUNT_KINDS).optional(),
   openingBalance: moneyString.optional(),
+  /**
+   * Reconciliation: "make the derived balance equal this number." The
+   * service translates it into an openingBalance adjustment so transaction
+   * history stays untouched. Distinct from `openingBalance`, which sets that
+   * value directly — the two are never sent together.
+   */
+  balance: moneyString.optional(),
 });
 
 /**
@@ -109,7 +118,7 @@ export const deleteBudgetGroupSchema = z.object({ id: z.uuid() });
 export const createBudgetSchema = z
   .object({
     id: z.uuid(),
-    categoryId: z.uuid("Pick a category."),
+    name: z.string().trim().min(1, "A budget needs a name.").max(80),
     limitAmount: moneyString,
     period: z.enum(["MONTHLY", "CUSTOM"]).default("MONTHLY"),
     periodStart: isoDate.nullable().optional(),
@@ -128,6 +137,18 @@ export const createBudgetSchema = z
 
 export const deleteBudgetSchema = z.object({ id: z.uuid() });
 
+export const updateBudgetSchema = z.object({
+  id: z.uuid(),
+  name: z.string().trim().min(1, "A budget needs a name.").max(80).optional(),
+  limitAmount: moneyString.optional(),
+  groupId: z.uuid().nullable().optional(),
+});
+
+export const updateBudgetGroupSchema = z.object({
+  id: z.uuid(),
+  name: z.string().trim().min(1, "A group needs a name.").max(80),
+});
+
 export const createDebtSchema = z.object({
   id: z.uuid(),
   direction: z.enum(["OWED_TO_ME", "I_OWE"]),
@@ -136,7 +157,33 @@ export const createDebtSchema = z.object({
   note: z.string().trim().max(500).nullable().optional(),
 });
 
-export const settleDebtSchema = z.object({ id: z.uuid(), settled: z.boolean() });
+/**
+ * Covers both inline field edits (personName/amount/note) and settling.
+ * Settling to true moves real money — G1's transfer pattern, one row this
+ * time — so it needs the account plus a client-generated id for that row
+ * (id) — settling to false is a pure status flip with no money side effect,
+ * matching the "unsettle doesn't silently undo a real transaction" call.
+ */
+export const updateDebtSchema = z
+  .object({
+    id: z.uuid(),
+    personName: z.string().trim().min(1, "Who?").max(120).optional(),
+    amount: moneyString.optional(),
+    note: z.string().trim().max(500).nullable().optional(),
+    settled: z.boolean().optional(),
+    accountId: z.uuid().optional(),
+    transactionId: z.uuid().optional(),
+    occurredOn: isoDate.optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.settled && (!value.accountId || !value.transactionId || !value.occurredOn)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["accountId"],
+        message: "Pick an account to settle against.",
+      });
+    }
+  });
 export const deleteDebtSchema = z.object({ id: z.uuid() });
 
 export const upsertIncomeSchema = z.object({
@@ -154,7 +201,10 @@ export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
 export type UpdateTransactionInput = z.infer<typeof updateTransactionSchema>;
 export type CreateTransferInput = z.infer<typeof createTransferSchema>;
 export type CreateBudgetInput = z.infer<typeof createBudgetSchema>;
+export type UpdateBudgetInput = z.infer<typeof updateBudgetSchema>;
+export type UpdateBudgetGroupInput = z.infer<typeof updateBudgetGroupSchema>;
 export type CreateDebtInput = z.infer<typeof createDebtSchema>;
+export type UpdateDebtInput = z.infer<typeof updateDebtSchema>;
 export type UpsertIncomeInput = z.infer<typeof upsertIncomeSchema>;
 
 export type AccountView = {

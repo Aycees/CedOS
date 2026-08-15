@@ -6,7 +6,9 @@ import { dbDateToIso, isoToDbDate } from "@/core/date";
 import { prisma } from "@/core/db/client";
 import { assertOwned, live, softDeleted } from "@/core/db/scope";
 import { AppError } from "@/core/errors";
+import { newId } from "@/core/ids";
 import { add, toStorage } from "@/core/money";
+import { CATEGORY_COLORS } from "@/modules/calendar/schema";
 
 import type {
   AccountView,
@@ -24,6 +26,8 @@ import type {
   IncomeView,
   TransactionView,
   UpdateAccountInput,
+  UpdateBudgetInput,
+  UpdateDebtInput,
   UpdateTransactionInput,
   UpsertIncomeInput,
 } from "./schema";
@@ -94,14 +98,22 @@ export async function updateAccount(userId: string, input: UpdateAccountInput) {
     await assertAccountNameFree(userId, input.name);
   }
 
+  let openingBalance = input.openingBalance;
+  if (input.balance !== undefined) {
+    const agg = await prisma.transaction.aggregate({
+      where: live(userId, { accountId: input.id }),
+      _sum: { amount: true },
+    });
+    const sumTx = Number(agg._sum.amount ?? 0);
+    openingBalance = toStorage(Number(input.balance) - sumTx);
+  }
+
   return prisma.account.update({
     where: { id: input.id },
     data: {
       ...(input.name !== undefined ? { name: input.name } : {}),
       ...(input.kind !== undefined ? { kind: input.kind } : {}),
-      ...(input.openingBalance !== undefined
-        ? { openingBalance: input.openingBalance }
-        : {}),
+      ...(openingBalance !== undefined ? { openingBalance } : {}),
     },
   });
 }
@@ -487,6 +499,49 @@ export async function deleteTransaction(userId: string, id: string) {
  * Transfers are excluded — moving money between your own accounts is not
  * spending, and counting it would double-count against the budget (G1).
  */
+/** Spend for one budget's active period. Shared by `listBudgets` and `updateBudget`'s cap guard. */
+async function computeBudgetSpend(
+  userId: string,
+  budget: { categoryId: string; period: string; periodStart: Date | null; periodEnd: Date | null },
+  month: string,
+): Promise<string> {
+  const monthStart = DateTime.fromFormat(month, "yyyy-MM", { zone: "utc" });
+  const from =
+    budget.period === "CUSTOM" && budget.periodStart
+      ? dbDateToIso(budget.periodStart)
+      : monthStart.toFormat("yyyy-MM-dd");
+  const to =
+    budget.period === "CUSTOM" && budget.periodEnd
+      ? dbDateToIso(budget.periodEnd)
+      : monthStart.endOf("month").toFormat("yyyy-MM-dd");
+
+  const spend = await prisma.transaction.aggregate({
+    where: live(userId, {
+      categoryId: budget.categoryId,
+      type: { not: "TRANSFER" as const },
+      occurredOn: { gte: isoToDbDate(from), lte: isoToDbDate(to) },
+    }),
+    _sum: { amount: true },
+  });
+
+  // Spend is stored as a negative outflow; a budget reads it as a positive.
+  return decimal(Math.abs(Math.min(0, Number(spend._sum?.amount ?? 0))));
+}
+
+/** Finds an existing category with this name (case-insensitive) or creates one. */
+async function resolveCategoryByName(userId: string, name: string) {
+  const existing = await prisma.transactionCategory.findFirst({
+    where: live(userId, { name: { equals: name, mode: "insensitive" as const } }),
+  });
+  if (existing) return existing;
+
+  const count = await prisma.transactionCategory.count({ where: live(userId) });
+  const color = CATEGORY_COLORS[count % CATEGORY_COLORS.length];
+  return prisma.transactionCategory.create({
+    data: { id: newId(), userId, name, color },
+  });
+}
+
 export async function listBudgets(
   userId: string,
   month: string,
@@ -500,36 +555,17 @@ export async function listBudgets(
     prisma.budgetGroup.findMany({ where: live(userId), orderBy: { sortOrder: "asc" } }),
   ]);
 
-  const monthStart = DateTime.fromFormat(month, "yyyy-MM", { zone: "utc" });
-
   const views: BudgetView[] = [];
   for (const budget of budgets) {
-    const from =
-      budget.period === "CUSTOM" && budget.periodStart
-        ? dbDateToIso(budget.periodStart)
-        : monthStart.toFormat("yyyy-MM-dd");
-    const to =
-      budget.period === "CUSTOM" && budget.periodEnd
-        ? dbDateToIso(budget.periodEnd)
-        : monthStart.endOf("month").toFormat("yyyy-MM-dd");
+    const spent = await computeBudgetSpend(userId, budget, month);
 
-    const spend = await prisma.transaction.aggregate({
-      where: live(userId, {
-        categoryId: budget.categoryId,
-        type: { not: "TRANSFER" as const },
-        occurredOn: { gte: isoToDbDate(from), lte: isoToDbDate(to) },
-      }),
-      _sum: { amount: true },
-    });
-
-    // Spend is stored as a negative outflow; a budget reads it as a positive.
     views.push({
       id: budget.id,
       categoryId: budget.categoryId,
       categoryName: budget.category.name,
       categoryColor: budget.category.color,
       limitAmount: decimal(budget.limitAmount),
-      spent: decimal(Math.abs(Math.min(0, Number(spend._sum?.amount ?? 0)))),
+      spent,
       period: budget.period as BudgetView["period"],
       periodStart: budget.periodStart ? dbDateToIso(budget.periodStart) : null,
       periodEnd: budget.periodEnd ? dbDateToIso(budget.periodEnd) : null,
@@ -555,21 +591,53 @@ export async function listBudgets(
 }
 
 export async function createBudget(userId: string, input: CreateBudgetInput) {
-  const category = await prisma.transactionCategory.findUnique({
-    where: { id: input.categoryId },
-  });
-  assertOwned(category, userId, "category");
+  const category = await resolveCategoryByName(userId, input.name);
 
   return prisma.budget.create({
     data: {
       id: input.id,
       userId,
-      categoryId: input.categoryId,
+      categoryId: category.id,
       limitAmount: input.limitAmount,
       period: input.period,
       periodStart: input.periodStart ? isoToDbDate(input.periodStart) : null,
       periodEnd: input.periodEnd ? isoToDbDate(input.periodEnd) : null,
       groupId: input.groupId ?? null,
+    },
+  });
+}
+
+export async function updateBudget(userId: string, input: UpdateBudgetInput) {
+  const existing = assertOwned(
+    await prisma.budget.findUnique({ where: { id: input.id } }),
+    userId,
+    "budget",
+  );
+
+  if (input.name !== undefined) {
+    await prisma.transactionCategory.update({
+      where: { id: existing.categoryId },
+      data: { name: input.name },
+    });
+  }
+
+  if (input.limitAmount !== undefined) {
+    const month = DateTime.now().toFormat("yyyy-MM");
+    const spent = await computeBudgetSpend(userId, existing, month);
+    if (Number(input.limitAmount) < Number(spent)) {
+      throw new AppError(
+        "PRECONDITION_FAILED",
+        `The cap can't go below what's already spent (${spent}).`,
+        { limitAmount: ["Can't drop below current spend."] },
+      );
+    }
+  }
+
+  return prisma.budget.update({
+    where: { id: input.id },
+    data: {
+      ...(input.limitAmount !== undefined ? { limitAmount: input.limitAmount } : {}),
+      ...(input.groupId !== undefined ? { groupId: input.groupId } : {}),
     },
   });
 }
@@ -587,6 +655,12 @@ export async function createBudgetGroup(
   return prisma.budgetGroup.create({
     data: { id: input.id, userId, name: input.name },
   });
+}
+
+export async function updateBudgetGroup(userId: string, id: string, name: string) {
+  const existing = await prisma.budgetGroup.findUnique({ where: { id } });
+  assertOwned(existing, userId, "budget group");
+  return prisma.budgetGroup.update({ where: { id }, data: { name } });
 }
 
 export async function deleteBudgetGroup(userId: string, id: string) {
@@ -631,14 +705,68 @@ export async function createDebt(userId: string, input: CreateDebtInput) {
   });
 }
 
-/** Reversible by design — settledAt is a nullable timestamp, not a boolean. */
-export async function settleDebt(userId: string, id: string, settled: boolean) {
-  const existing = await prisma.debt.findUnique({ where: { id } });
+/**
+ * Handles inline field edits (personName/amount/note) and settling in one
+ * partial update, mirroring updateTransaction's shape.
+ *
+ * Settling to true moves real money: it posts a transaction on the chosen
+ * account (INCOME for a debt received, EXPENSE for a debt paid) in the same
+ * write as the settledAt timestamp. Settling to false only clears the
+ * timestamp — reversible by design (product spec §9) for the debt's own
+ * status, but it does not reverse the transaction, since the money already
+ * moved and silently deleting that history would be its own kind of wrong.
+ */
+export async function updateDebt(userId: string, input: UpdateDebtInput) {
+  const existing = await prisma.debt.findUnique({ where: { id: input.id } });
   assertOwned(existing, userId, "debt");
 
+  if (input.settled) {
+    const account = await prisma.account.findUnique({
+      where: { id: input.accountId! },
+    });
+    assertOwned(account, userId, "account");
+
+    const magnitude = Math.abs(Number(input.amount ?? existing!.amount));
+    const type = existing!.direction === "OWED_TO_ME" ? "INCOME" : "EXPENSE";
+    const amount = type === "EXPENSE" ? -magnitude : magnitude;
+
+    await prisma.$transaction([
+      prisma.transaction.create({
+        data: {
+          id: input.transactionId!,
+          userId,
+          name: existing!.personName,
+          occurredOn: isoToDbDate(input.occurredOn!),
+          amount: toStorage(amount),
+          type,
+          accountId: input.accountId!,
+        },
+      }),
+      prisma.account.update({
+        where: { id: input.accountId! },
+        data: { lastUsedAt: new Date() },
+      }),
+      prisma.debt.update({
+        where: { id: input.id },
+        data: {
+          ...(input.personName !== undefined ? { personName: input.personName } : {}),
+          ...(input.amount !== undefined ? { amount: input.amount } : {}),
+          ...(input.note !== undefined ? { note: input.note } : {}),
+          settledAt: new Date(),
+        },
+      }),
+    ]);
+    return;
+  }
+
   await prisma.debt.update({
-    where: { id },
-    data: { settledAt: settled ? new Date() : null },
+    where: { id: input.id },
+    data: {
+      ...(input.personName !== undefined ? { personName: input.personName } : {}),
+      ...(input.amount !== undefined ? { amount: input.amount } : {}),
+      ...(input.note !== undefined ? { note: input.note } : {}),
+      ...(input.settled === false ? { settledAt: null } : {}),
+    },
   });
 }
 

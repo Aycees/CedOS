@@ -1,6 +1,15 @@
 import { readRoute, route } from "@/core/mutation/handler";
-import { createBudgetSchema, deleteBudgetSchema } from "@/modules/finance/schema";
-import { createBudget, deleteBudget, listBudgets } from "@/modules/finance/service";
+import {
+  createBudgetSchema,
+  deleteBudgetSchema,
+  updateBudgetSchema,
+} from "@/modules/finance/schema";
+import {
+  createBudget,
+  deleteBudget,
+  listBudgets,
+  updateBudget,
+} from "@/modules/finance/service";
 
 export const GET = readRoute(({ session, searchParams }) =>
   listBudgets(
@@ -11,6 +20,10 @@ export const GET = readRoute(({ session, searchParams }) =>
 
 export const POST = route(createBudgetSchema, async ({ session, body }) => {
   await createBudget(session.userId, body);
+});
+
+export const PATCH = route(updateBudgetSchema, async ({ session, body }) => {
+  await updateBudget(session.userId, body);
 });
 
 export const DELETE = route(deleteBudgetSchema, async ({ session, body }) => {

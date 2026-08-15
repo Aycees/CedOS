@@ -82,7 +82,7 @@ export default async function RootLayout({
       className={`${newsreader.variable} ${plexMono.variable}`}
       suppressHydrationWarning
     >
-      <body>
+      <body suppressHydrationWarning>
         <AppearanceScript />
         <QueryProvider>{children}</QueryProvider>
       </body>

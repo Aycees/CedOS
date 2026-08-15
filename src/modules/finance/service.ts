@@ -24,6 +24,7 @@ import type {
   IncomeView,
   TransactionView,
   UpdateAccountInput,
+  UpdateDebtInput,
   UpdateTransactionInput,
   UpsertIncomeInput,
 } from "./schema";
@@ -94,14 +95,22 @@ export async function updateAccount(userId: string, input: UpdateAccountInput) {
     await assertAccountNameFree(userId, input.name);
   }
 
+  let openingBalance = input.openingBalance;
+  if (input.balance !== undefined) {
+    const agg = await prisma.transaction.aggregate({
+      where: live(userId, { accountId: input.id }),
+      _sum: { amount: true },
+    });
+    const sumTx = Number(agg._sum.amount ?? 0);
+    openingBalance = toStorage(Number(input.balance) - sumTx);
+  }
+
   return prisma.account.update({
     where: { id: input.id },
     data: {
       ...(input.name !== undefined ? { name: input.name } : {}),
       ...(input.kind !== undefined ? { kind: input.kind } : {}),
-      ...(input.openingBalance !== undefined
-        ? { openingBalance: input.openingBalance }
-        : {}),
+      ...(openingBalance !== undefined ? { openingBalance } : {}),
     },
   });
 }
@@ -631,14 +640,68 @@ export async function createDebt(userId: string, input: CreateDebtInput) {
   });
 }
 
-/** Reversible by design — settledAt is a nullable timestamp, not a boolean. */
-export async function settleDebt(userId: string, id: string, settled: boolean) {
-  const existing = await prisma.debt.findUnique({ where: { id } });
+/**
+ * Handles inline field edits (personName/amount/note) and settling in one
+ * partial update, mirroring updateTransaction's shape.
+ *
+ * Settling to true moves real money: it posts a transaction on the chosen
+ * account (INCOME for a debt received, EXPENSE for a debt paid) in the same
+ * write as the settledAt timestamp. Settling to false only clears the
+ * timestamp — reversible by design (product spec §9) for the debt's own
+ * status, but it does not reverse the transaction, since the money already
+ * moved and silently deleting that history would be its own kind of wrong.
+ */
+export async function updateDebt(userId: string, input: UpdateDebtInput) {
+  const existing = await prisma.debt.findUnique({ where: { id: input.id } });
   assertOwned(existing, userId, "debt");
 
+  if (input.settled) {
+    const account = await prisma.account.findUnique({
+      where: { id: input.accountId! },
+    });
+    assertOwned(account, userId, "account");
+
+    const magnitude = Math.abs(Number(input.amount ?? existing!.amount));
+    const type = existing!.direction === "OWED_TO_ME" ? "INCOME" : "EXPENSE";
+    const amount = type === "EXPENSE" ? -magnitude : magnitude;
+
+    await prisma.$transaction([
+      prisma.transaction.create({
+        data: {
+          id: input.transactionId!,
+          userId,
+          name: existing!.personName,
+          occurredOn: isoToDbDate(input.occurredOn!),
+          amount: toStorage(amount),
+          type,
+          accountId: input.accountId!,
+        },
+      }),
+      prisma.account.update({
+        where: { id: input.accountId! },
+        data: { lastUsedAt: new Date() },
+      }),
+      prisma.debt.update({
+        where: { id: input.id },
+        data: {
+          ...(input.personName !== undefined ? { personName: input.personName } : {}),
+          ...(input.amount !== undefined ? { amount: input.amount } : {}),
+          ...(input.note !== undefined ? { note: input.note } : {}),
+          settledAt: new Date(),
+        },
+      }),
+    ]);
+    return;
+  }
+
   await prisma.debt.update({
-    where: { id },
-    data: { settledAt: settled ? new Date() : null },
+    where: { id: input.id },
+    data: {
+      ...(input.personName !== undefined ? { personName: input.personName } : {}),
+      ...(input.amount !== undefined ? { amount: input.amount } : {}),
+      ...(input.note !== undefined ? { note: input.note } : {}),
+      ...(input.settled === false ? { settledAt: null } : {}),
+    },
   });
 }
 

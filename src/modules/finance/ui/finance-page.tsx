@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { DateTime } from "luxon";
 import { useState } from "react";
 
 import { formatListDate } from "@/core/date";
@@ -11,8 +12,8 @@ import { Button } from "@/core/ui/button";
 import { Card } from "@/core/ui/card";
 import { cn } from "@/core/ui/cn";
 import { Input } from "@/core/ui/input";
+import { Modal, ModalActions } from "@/core/ui/modal";
 import { EmptyState } from "@/core/ui/page-header";
-import { Segmented } from "@/core/ui/segmented";
 
 import {
   KIND_LABELS,
@@ -28,12 +29,12 @@ import {
   AccountModal,
   BudgetModal,
   CategoryModal,
-  DebtModal,
   IncomeModal,
   TransactionModal,
+  useAccountDelete,
 } from "./money-modals";
 
-type Tab = "overview" | "transactions" | "budget" | "debts";
+type Tab = "overview" | "transactions" | "budget" | "debts" | "accounts";
 
 export function FinancePage({
   overview,
@@ -48,9 +49,10 @@ export function FinancePage({
 }) {
   const [tab, setTab] = useState<Tab>("overview");
   const [txModal, setTxModal] = useState<{ tx: TransactionView | null } | null>(null);
-  const [accountModal, setAccountModal] = useState<{ account: AccountView | null } | null>(
-    null,
-  );
+  const [accountModal, setAccountModal] = useState<{
+    account: AccountView | null;
+    fromAccountsTab: boolean;
+  } | null>(null);
 
   const { data } = useQuery({
     queryKey: ["finance", "overview", month],
@@ -69,20 +71,43 @@ export function FinancePage({
 
   return (
     <div className="p-8">
-      <div className="mb-5 flex flex-wrap items-center gap-3">
-        <Segmented
+      <div className="mb-5 flex flex-wrap items-end gap-3">
+        <div
+          role="tablist"
           aria-label="Money view"
-          value={tab}
-          onChange={setTab}
-          options={[
-            { label: "Overview", value: "overview" },
-            { label: "Transactions", value: "transactions" },
-            { label: "Budget", value: "budget" },
-            { label: "Debts", value: "debts" },
-          ]}
-        />
+          className="flex flex-1 min-w-fit gap-0.5 overflow-x-auto border-b border-dashed border-border"
+        >
+          {(
+            [
+              { label: "Overview", value: "overview" },
+              { label: "Transactions", value: "transactions" },
+              { label: "Budget", value: "budget" },
+              { label: "Debts", value: "debts" },
+              { label: "Accounts", value: "accounts" },
+            ] as const
+          ).map((option) => {
+            const selected = tab === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => setTab(option.value)}
+                className={cn(
+                  "whitespace-nowrap pt-2.5 pb-3 pl-3.75 pr-3.75 font-mono text-[12.5px]",
+                  selected
+                    ? "text-text shadow-[inset_0_-2px_0_var(--accent-default)]"
+                    : "text-muted",
+                )}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
         <Button
-          className="ml-auto"
+          className="mb-0.5"
           disabled={!hasAccount}
           onClick={() => setTxModal({ tx: null })}
         >
@@ -100,8 +125,10 @@ export function FinancePage({
         <Overview
           data={data}
           today={today}
-          onNewAccount={() => setAccountModal({ account: null })}
-          onEditAccount={(account) => setAccountModal({ account })}
+          onNewAccount={() => setAccountModal({ account: null, fromAccountsTab: false })}
+          onEditAccount={(account) =>
+            setAccountModal({ account, fromAccountsTab: false })
+          }
         />
       )}
       {tab === "transactions" && (
@@ -112,7 +139,16 @@ export function FinancePage({
         />
       )}
       {tab === "budget" && <Budgets categories={cats} month={month} />}
-      {tab === "debts" && <Debts />}
+      {tab === "debts" && <Debts accounts={accounts} today={today} />}
+      {tab === "accounts" && (
+        <Accounts
+          accounts={accounts}
+          onNewAccount={() => setAccountModal({ account: null, fromAccountsTab: true })}
+          onEditAccount={(account) =>
+            setAccountModal({ account, fromAccountsTab: true })
+          }
+        />
+      )}
 
       {txModal && (
         <TransactionModal
@@ -127,6 +163,7 @@ export function FinancePage({
         <AccountModal
           account={accountModal.account}
           accounts={accounts}
+          allowBalanceEdit={accountModal.fromAccountsTab}
           onClose={() => setAccountModal(null)}
         />
       )}
@@ -254,6 +291,107 @@ function Overview({
         )}
       </Card>
     </div>
+  );
+}
+
+function Accounts({
+  accounts,
+  onNewAccount,
+  onEditAccount,
+}: {
+  accounts: AccountView[];
+  onNewAccount: () => void;
+  onEditAccount: (account: AccountView) => void;
+}) {
+  if (accounts.length === 0) {
+    return (
+      <div className="max-w-180">
+        <EmptyState line="no accounts yet" />
+        <Button variant="dashed" className="mt-3 min-h-37.5 w-58" onClick={onNewAccount}>
+          + add account
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid max-w-205 grid-cols-[repeat(auto-fill,minmax(232px,1fr))] gap-4">
+      {accounts.map((account) => (
+        <AccountCard
+          key={account.id}
+          account={account}
+          accounts={accounts}
+          onEdit={() => onEditAccount(account)}
+        />
+      ))}
+      <Button
+        variant="dashed"
+        className="min-h-37.5 items-center justify-center"
+        onClick={onNewAccount}
+      >
+        + add account
+      </Button>
+    </div>
+  );
+}
+
+function AccountCard({
+  account,
+  accounts,
+  onEdit,
+}: {
+  account: AccountView;
+  accounts: AccountView[];
+  onEdit: () => void;
+}) {
+  const { attemptDelete, dialog } = useAccountDelete(account, accounts, () => {});
+
+  return (
+    <>
+      <Card
+        role="button"
+        tabIndex={0}
+        aria-label={`Edit ${account.name}`}
+        onClick={onEdit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onEdit();
+          }
+        }}
+        className="cursor-pointer px-5 pt-5 pb-4.5"
+      >
+        <div className="flex items-baseline gap-2">
+          <span className="kicker">{KIND_LABELS[account.kind]}</span>
+          <button
+            type="button"
+            aria-label={`Delete ${account.name}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              attemptDelete.mutate();
+            }}
+            className="ml-auto font-mono text-[15px] leading-none text-accent-red"
+          >
+            ×
+          </button>
+        </div>
+        <div className="mt-2.5 font-serif text-[19px]">{account.name}</div>
+        <div
+          className={cn(
+            "mt-3.5 font-mono text-[24px] tracking-[-0.02em]",
+            isOverdrawn(account.balance) && "text-accent-red",
+          )}
+        >
+          {formatMoney(account.balance)}
+        </div>
+        <div className="row-divider mt-2.5 pt-2.5 font-mono text-[11px] text-muted">
+          {account.lastUsedAt
+            ? `last used ${DateTime.fromISO(account.lastUsedAt).toFormat("LLL d")}`
+            : "not used yet"}
+        </div>
+      </Card>
+      {dialog}
+    </>
   );
 }
 
@@ -540,112 +678,393 @@ function BudgetRow({ budget }: { budget: BudgetView }) {
   );
 }
 
-function Debts() {
+const DEBT_LISTS = [
+  {
+    direction: "OWED_TO_ME" as const,
+    label: "owed to me",
+    prompt: "Who owes you?",
+    color: "text-accent-green",
+  },
+  {
+    direction: "I_OWE" as const,
+    label: "I owe",
+    prompt: "Who do you owe?",
+    color: "text-accent-red",
+  },
+];
+
+function Debts({ accounts, today }: { accounts: AccountView[]; today: string }) {
   const queryClient = useQueryClient();
-  const [creating, setCreating] = useState(false);
+  const [settling, setSettling] = useState<DebtView | null>(null);
+  const hasAccount = accounts.length > 0;
 
   const { data: debts = [] } = useQuery({
     queryKey: ["finance", "debts"],
     queryFn: () => api.get<DebtView[]>("/api/finance/debts"),
   });
 
-  const settle = useMutation({
-    mutationFn: (vars: { id: string; settled: boolean }) =>
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["finance"] });
+
+  const create = useMutation({
+    mutationFn: (vars: {
+      direction: "OWED_TO_ME" | "I_OWE";
+      personName: string;
+      amount: string;
+      note: string | null;
+    }) => api.post("/api/finance/debts", { id: newId(), ...vars }),
+    onSuccess: invalidate,
+  });
+
+  const edit = useMutation({
+    mutationFn: (vars: { id: string; personName?: string; amount?: string; note?: string }) =>
       api.patch("/api/finance/debts", vars),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["finance"] }),
+    onSuccess: invalidate,
+  });
+
+  const unsettle = useMutation({
+    mutationFn: (id: string) => api.patch("/api/finance/debts", { id, settled: false }),
+    onSuccess: invalidate,
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api.delete("/api/finance/debts", { id }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["finance"] }),
+    onSuccess: invalidate,
   });
 
-  const lists = [
-    { direction: "OWED_TO_ME" as const, label: "Owed to me" },
-    { direction: "I_OWE" as const, label: "I owe" },
-  ];
-
   return (
-    <div className="max-w-180">
-      <Button size="sm" className="mb-4" onClick={() => setCreating(true)}>
-        + new debt
-      </Button>
-
-      <div className="grid grid-cols-1 gap-4.5 md:grid-cols-2">
-        {lists.map((list) => {
+    <div className="max-w-205">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        {DEBT_LISTS.map((list) => {
           const rows = debts.filter((debt) => debt.direction === list.direction);
+          const total = rows
+            .filter((debt) => !debt.settledAt)
+            .reduce((sum, debt) => sum + Number(debt.amount), 0);
+
           return (
-            <Card key={list.direction} className="pb-3">
-              <div className="kicker mb-1">{list.label}</div>
-              {rows.length === 0 ? (
-                <p className="m-0 py-2 font-serif text-[15px] italic text-muted">
-                  nothing here
-                </p>
-              ) : (
-                rows.map((debt) => (
-                  <div
-                    key={debt.id}
-                    className="row-divider list-row group flex items-baseline gap-2.5"
-                  >
-                    <button
-                      type="button"
-                      role="checkbox"
-                      aria-checked={Boolean(debt.settledAt)}
-                      aria-label={
-                        debt.settledAt
-                          ? `Unsettle ${debt.personName}`
-                          : `Settle ${debt.personName}`
-                      }
-                      // Reversible in case of a mis-click (product spec §9).
-                      onClick={() =>
-                        settle.mutate({ id: debt.id, settled: !debt.settledAt })
-                      }
-                      className={cn(
-                        "grid size-3.75 flex-none place-items-center rounded-sm border-[1.5px] font-mono text-[9px] leading-none",
-                        debt.settledAt
-                          ? "border-accent-green bg-accent-green text-on-dark"
-                          : "border-checkbox",
-                      )}
-                    >
-                      {debt.settledAt ? "✓" : ""}
-                    </button>
+            <div key={list.direction} className="flex flex-col gap-3.5">
+              <div className="kicker">
+                {list.label} · {formatMoney(total)}
+              </div>
 
-                    <span className="min-w-0 flex-1">
-                      <span
-                        className={cn(
-                          "block font-mono text-[12.5px]",
-                          debt.settledAt && "text-muted line-through",
-                        )}
-                      >
-                        {debt.personName}
-                      </span>
-                      {debt.note && (
-                        <span className="block font-mono text-[10.5px] text-muted">
-                          {debt.note}
-                        </span>
-                      )}
-                    </span>
+              {rows.map((debt) => (
+                <DebtCard
+                  key={debt.id}
+                  debt={debt}
+                  color={list.color}
+                  settleLabel={list.direction === "OWED_TO_ME" ? "mark received" : "mark paid"}
+                  canSettle={hasAccount}
+                  onEditField={(patch) => edit.mutate({ id: debt.id, ...patch })}
+                  onSettle={() => setSettling(debt)}
+                  onUnsettle={() => unsettle.mutate(debt.id)}
+                  onRemove={() => remove.mutate(debt.id)}
+                />
+              ))}
 
-                    <span className="flex-none font-mono text-[12.5px]">
-                      {formatMoney(debt.amount)}
-                    </span>
-                    <button
-                      type="button"
-                      aria-label={`Delete debt ${debt.personName}`}
-                      onClick={() => remove.mutate(debt.id)}
-                      className="flex-none font-mono text-[11px] text-muted opacity-0 group-hover:opacity-100 focus:opacity-100"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))
-              )}
-            </Card>
+              <AddDebtForm
+                prompt={list.prompt}
+                onAdd={(input) => create.mutate({ direction: list.direction, ...input })}
+              />
+            </div>
           );
         })}
       </div>
 
-      {creating && <DebtModal onClose={() => setCreating(false)} />}
+      {settling && (
+        <SettleDebtModal
+          debt={settling}
+          accounts={accounts}
+          today={today}
+          onClose={() => setSettling(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function EditableField({
+  value,
+  display,
+  onCommit,
+  placeholder,
+  ariaLabel,
+  className,
+  inputMode,
+  validate,
+}: {
+  value: string;
+  /** Rendered text while not editing, if different from the raw editable value (e.g. trimmed trailing zeros). */
+  display?: string;
+  onCommit: (value: string) => void;
+  placeholder?: string;
+  ariaLabel: string;
+  className?: string;
+  inputMode?: "decimal";
+  validate?: (value: string) => boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  const commit = () => {
+    setEditing(false);
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== value && (!validate || validate(trimmed))) {
+      onCommit(trimmed);
+    } else {
+      setDraft(value);
+    }
+  };
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onFocus={(e) => e.currentTarget.select()}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            e.currentTarget.blur();
+          } else if (e.key === "Escape") {
+            setDraft(value);
+            setEditing(false);
+          }
+        }}
+        inputMode={inputMode}
+        aria-label={ariaLabel}
+        className={cn("min-w-0 bg-transparent outline-none", className)}
+      />
+    );
+  }
+
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      aria-label={`Edit ${ariaLabel}`}
+      onClick={() => {
+        setDraft(value);
+        setEditing(true);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setDraft(value);
+          setEditing(true);
+        }
+      }}
+      className={cn(!value && "text-muted", className)}
+    >
+      {(value ? (display ?? value) : "") || placeholder}
+    </span>
+  );
+}
+
+const moneyPattern = /^-?\d+(\.\d{1,2})?$/;
+
+function DebtCard({
+  debt,
+  color,
+  settleLabel,
+  canSettle,
+  onEditField,
+  onSettle,
+  onUnsettle,
+  onRemove,
+}: {
+  debt: DebtView;
+  color: string;
+  settleLabel: string;
+  canSettle: boolean;
+  onEditField: (patch: { personName?: string; amount?: string; note?: string }) => void;
+  onSettle: () => void;
+  onUnsettle: () => void;
+  onRemove: () => void;
+}) {
+  const settled = Boolean(debt.settledAt);
+
+  return (
+    <Card className={cn("px-5 pt-4.5 pb-4", settled && "opacity-50")}>
+      <div className="flex items-baseline justify-between gap-3">
+        <EditableField
+          value={debt.personName}
+          onCommit={(personName) => onEditField({ personName })}
+          ariaLabel={`${debt.personName} name`}
+          className={cn(
+            "font-serif text-[19px]",
+            settled && "text-muted line-through",
+          )}
+        />
+        <span className="flex-none font-mono text-[19px] tracking-[-0.01em]">
+          <span className="text-muted">₱</span>{" "}
+          <EditableField
+            value={debt.amount}
+            display={debt.amount.replace(/\.00$/, "")}
+            onCommit={(amount) => onEditField({ amount })}
+            ariaLabel={`${debt.personName} amount`}
+            inputMode="decimal"
+            validate={(v) => moneyPattern.test(v)}
+            className={cn("w-20 text-right", color)}
+          />
+        </span>
+      </div>
+
+      <EditableField
+        value={debt.note ?? ""}
+        onCommit={(note) => onEditField({ note })}
+        placeholder="Description (optional)"
+        ariaLabel={`${debt.personName} description`}
+        className="mt-1 block font-mono text-[11.5px] text-muted"
+      />
+
+      <div className="mt-3.5 flex items-center gap-2">
+        {settled ? (
+          <Button
+            variant="outline"
+            className="flex-1 text-accent-green"
+            onClick={onUnsettle}
+          >
+            settled — unsettle
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            className="flex-1"
+            disabled={!canSettle}
+            onClick={onSettle}
+          >
+            {settleLabel}
+          </Button>
+        )}
+        <Button
+          variant="outline"
+          aria-label={`Delete debt ${debt.personName}`}
+          onClick={onRemove}
+          className="flex-none text-accent-red"
+        >
+          ×
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function AddDebtForm({
+  prompt,
+  onAdd,
+}: {
+  prompt: string;
+  onAdd: (input: { personName: string; amount: string; note: string | null }) => void;
+}) {
+  const [personName, setPersonName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+
+  const canAdd = personName.trim() && moneyPattern.test(amount.trim());
+
+  const submit = () => {
+    if (!canAdd) return;
+    onAdd({ personName: personName.trim(), amount: amount.trim(), note: note.trim() || null });
+    setPersonName("");
+    setAmount("");
+    setNote("");
+  };
+
+  return (
+    <div className="flex flex-col gap-2.5 rounded-card border border-dashed border-border-strong p-4">
+      <div className="flex gap-2.5">
+        <Input
+          value={personName}
+          onChange={(e) => setPersonName(e.target.value)}
+          placeholder={prompt}
+          className="min-w-0 flex-1"
+        />
+        <Input
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="₱ amount"
+          inputMode="decimal"
+          className="max-w-28 flex-none"
+        />
+      </div>
+      <Input
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Description (optional)"
+      />
+      <Button className="w-full" onClick={submit} disabled={!canAdd}>
+        + add
+      </Button>
+    </div>
+  );
+}
+
+function SettleDebtModal({
+  debt,
+  accounts,
+  today,
+  onClose,
+}: {
+  debt: DebtView;
+  accounts: AccountView[];
+  today: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
+  const received = debt.direction === "OWED_TO_ME";
+
+  const settle = useMutation({
+    mutationFn: () =>
+      api.patch("/api/finance/debts", {
+        id: debt.id,
+        settled: true,
+        accountId,
+        transactionId: newId(),
+        occurredOn: today,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["finance"] });
+      onClose();
+    },
+  });
+
+  return (
+    <Modal
+      open
+      onOpenChange={(open) => !open && onClose()}
+      kicker={received ? "MARK RECEIVED" : "MARK PAID"}
+      title={`${debt.personName} · ${formatMoney(debt.amount)}`}
+      width={400}
+    >
+      <div className="mt-5 flex flex-col gap-4">
+        <label className="flex flex-col gap-1.5">
+          <span className="kicker">
+            {received ? "Which account did it go to?" : "Which account did it come from?"}
+          </span>
+          <select
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
+          >
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <ModalActions>
+        <Button variant="outline" onClick={onClose}>
+          cancel
+        </Button>
+        <Button onClick={() => settle.mutate()} disabled={!accountId || settle.isPending}>
+          {received ? "mark received" : "mark paid"}
+        </Button>
+      </ModalActions>
+    </Modal>
   );
 }

@@ -11,7 +11,7 @@ import { formatListDate } from "@/core/date";
 import { Button } from "@/core/ui/button";
 import { cn } from "@/core/ui/cn";
 import { ImpactPreviewDialog } from "@/core/ui/impact-preview-dialog";
-import { Input, Textarea } from "@/core/ui/input";
+import { Input } from "@/core/ui/input";
 import { Modal, ModalActions } from "@/core/ui/modal";
 import { Segmented } from "@/core/ui/segmented";
 import { CATEGORY_COLORS } from "@/modules/calendar/schema";
@@ -30,19 +30,17 @@ const invalidateFinance = (queryClient: ReturnType<typeof useQueryClient>) =>
 
 // ---------------------------------------------------------------------------
 
-export function AccountModal({
-  account,
-  accounts,
-  onClose,
-}: {
-  account: AccountView | null;
-  accounts: AccountView[];
-  onClose: () => void;
-}) {
+/**
+ * The check → impact-preview → reassign/cascade delete flow for an account,
+ * shared between the modal's "delete" action and the Accounts tab's
+ * per-card quick-delete button so the three mutations exist in one place.
+ */
+export function useAccountDelete(
+  account: AccountView | null,
+  accounts: AccountView[],
+  onDone: () => void,
+) {
   const queryClient = useQueryClient();
-  const [name, setName] = useState(account?.name ?? "");
-  const [kind, setKind] = useState<AccountKind>(account?.kind ?? "CASH");
-  const [opening, setOpening] = useState("0");
   const [error, setError] = useState<string | null>(null);
   const [impact, setImpact] = useState<{
     accountName: string;
@@ -51,22 +49,8 @@ export function AccountModal({
 
   const done = () => {
     void invalidateFinance(queryClient);
-    onClose();
+    onDone();
   };
-
-  const save = useMutation({
-    mutationFn: () =>
-      account
-        ? api.patch("/api/finance/accounts", { id: account.id, name, kind })
-        : api.post("/api/finance/accounts", {
-            id: newId(),
-            name,
-            kind,
-            openingBalance: opening || "0",
-          }),
-    onSuccess: done,
-    onError: (e) => setError(userMessage(e, "That didn't save.")),
-  });
 
   const attemptDelete = useMutation({
     mutationFn: () =>
@@ -91,8 +75,8 @@ export function AccountModal({
     onSuccess: done,
   });
 
-  if (impact && account) {
-    return (
+  const dialog =
+    impact && account ? (
       <ImpactPreviewDialog
         open
         onOpenChange={(open) => !open && setImpact(null)}
@@ -113,8 +97,103 @@ export function AccountModal({
         }
         onDeleteAll={() => resolveDelete.mutate({ mode: "cascade" })}
       />
-    );
-  }
+    ) : null;
+
+  return { attemptDelete, error, dialog };
+}
+
+// ---------------------------------------------------------------------------
+
+const ACCOUNT_KIND_PILLS: { value: AccountKind; label: string }[] = ACCOUNT_KINDS.map(
+  (value) => ({ value, label: KIND_LABELS[value] }),
+);
+
+function AccountKindPicker({
+  value,
+  onChange,
+}: {
+  value: AccountKind;
+  onChange: (kind: AccountKind) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.75">
+      {ACCOUNT_KIND_PILLS.map((option) => {
+        const selected = value === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onChange(option.value)}
+            className="rounded-pill border px-3.25 py-1.5 font-mono text-[11.5px] text-text"
+            style={{
+              borderColor: selected ? "var(--accent-default)" : "var(--border)",
+              background: selected
+                ? "color-mix(in srgb, var(--accent-default) 10%, transparent)"
+                : "transparent",
+            }}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * `allowBalanceEdit` scopes the reconciliation field to the Accounts tab —
+ * the Overview tab's quick chip-edit stays name/type only.
+ */
+export function AccountModal({
+  account,
+  accounts,
+  allowBalanceEdit = false,
+  onClose,
+}: {
+  account: AccountView | null;
+  accounts: AccountView[];
+  allowBalanceEdit?: boolean;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(account?.name ?? "");
+  const [kind, setKind] = useState<AccountKind>(account?.kind ?? "CASH");
+  const [opening, setOpening] = useState("");
+  const [balance, setBalance] = useState(account?.balance ?? "0");
+  const [error, setError] = useState<string | null>(null);
+
+  const queryClient = useQueryClient();
+  const done = () => {
+    void invalidateFinance(queryClient);
+    onClose();
+  };
+
+  const save = useMutation({
+    mutationFn: () =>
+      account
+        ? api.patch("/api/finance/accounts", {
+            id: account.id,
+            name,
+            kind,
+            ...(allowBalanceEdit ? { balance } : {}),
+          })
+        : api.post("/api/finance/accounts", {
+            id: newId(),
+            name,
+            kind,
+            openingBalance: opening || "0",
+          }),
+    onSuccess: done,
+    onError: (e) => setError(userMessage(e, "That didn't save.")),
+  });
+
+  const { attemptDelete, error: deleteError, dialog } = useAccountDelete(
+    account,
+    accounts,
+    done,
+  );
+
+  if (dialog) return dialog;
 
   return (
     <Modal
@@ -123,31 +202,22 @@ export function AccountModal({
       kicker={account ? "EDIT ACCOUNT" : "NEW ACCOUNT"}
       title={account ? "Edit account" : "New account"}
       width={420}
+      titleVisible={false}
     >
-      <div className="mt-5 flex flex-col gap-4">
-        <label className="flex flex-col gap-1.5">
-          <span className="kicker">Name</span>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Wallet, GCash, Savings…"
-            autoFocus
-          />
-        </label>
+      <Input
+        variant="ghost"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Wallet, GCash, Savings…"
+        aria-label="Account name"
+        autoFocus
+        className="mt-3"
+      />
 
+      <div className="mt-4 flex flex-col gap-4">
         <label className="flex flex-col gap-1.5">
           <span className="kicker">Type</span>
-          <select
-            value={kind}
-            onChange={(e) => setKind(e.target.value as AccountKind)}
-            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
-          >
-            {ACCOUNT_KINDS.map((option) => (
-              <option key={option} value={option}>
-                {KIND_LABELS[option]}
-              </option>
-            ))}
-          </select>
+          <AccountKindPicker value={kind} onChange={setKind} />
         </label>
 
         {!account && (
@@ -156,12 +226,29 @@ export function AccountModal({
             <Input
               value={opening}
               onChange={(e) => setOpening(e.target.value)}
+              placeholder="0.00"
               inputMode="decimal"
             />
           </label>
         )}
 
-        {error && <p className="m-0 font-mono text-[11.5px] text-accent-red">{error}</p>}
+        {account && allowBalanceEdit && (
+          <label className="flex flex-col gap-1.5">
+            <span className="kicker">Balance (PHP)</span>
+            <Input
+              tinted
+              value={balance}
+              onChange={(e) => setBalance(e.target.value)}
+              inputMode="decimal"
+            />
+          </label>
+        )}
+
+        {(error || deleteError) && (
+          <p className="m-0 font-mono text-[11.5px] text-accent-red">
+            {error || deleteError}
+          </p>
+        )}
       </div>
 
       <ModalActions
@@ -449,81 +536,6 @@ export function CategoryModal({ onClose }: { onClose: () => void }) {
           cancel
         </Button>
         <Button onClick={() => save.mutate()} disabled={!name.trim()}>
-          save
-        </Button>
-      </ModalActions>
-    </Modal>
-  );
-}
-
-// ---------------------------------------------------------------------------
-
-export function DebtModal({ onClose }: { onClose: () => void }) {
-  const queryClient = useQueryClient();
-  const [direction, setDirection] = useState<"OWED_TO_ME" | "I_OWE">("OWED_TO_ME");
-  const [personName, setPersonName] = useState("");
-  const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("");
-
-  const save = useMutation({
-    mutationFn: () =>
-      api.post("/api/finance/debts", {
-        id: newId(),
-        direction,
-        personName,
-        amount,
-        note: note || null,
-      }),
-    onSuccess: () => {
-      void invalidateFinance(queryClient);
-      onClose();
-    },
-  });
-
-  return (
-    <Modal
-      open
-      onOpenChange={(open) => !open && onClose()}
-      kicker="NEW DEBT"
-      title="New debt"
-      width={420}
-    >
-      <div className="mt-5 flex flex-col gap-4">
-        <Segmented
-          aria-label="Direction"
-          value={direction}
-          onChange={setDirection}
-          options={[
-            { label: "Owed to me", value: "OWED_TO_ME" },
-            { label: "I owe", value: "I_OWE" },
-          ]}
-        />
-        <label className="flex flex-col gap-1.5">
-          <span className="kicker">Person</span>
-          <Input
-            value={personName}
-            onChange={(e) => setPersonName(e.target.value)}
-            autoFocus
-          />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="kicker">Amount</span>
-          <Input
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            inputMode="decimal"
-          />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="kicker">Note</span>
-          <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
-        </label>
-      </div>
-      <ModalActions>
-        <Button variant="outline" onClick={onClose}>
-          cancel
-        </Button>
-        <Button onClick={() => save.mutate()} disabled={!personName.trim() || !amount}>
           save
         </Button>
       </ModalActions>

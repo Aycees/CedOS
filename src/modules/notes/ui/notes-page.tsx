@@ -82,8 +82,13 @@ export function NotesPage({
       />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="flex w-85 flex-none flex-col border-r border-border">
-          <div className="flex h-18 items-center border-b border-border px-5">
+        <div
+          className={cn(
+            "w-full flex-col border-border lg:w-85 lg:flex-none lg:border-r",
+            selectedId ? "hidden lg:flex" : "flex",
+          )}
+        >
+          <div className="flex h-18 items-center border-b border-border px-4 lg:px-5">
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -118,13 +123,13 @@ export function NotesPage({
                 </button>
               ))
             ) : (
-              <div className="flex flex-col gap-2 py-4">
+              <div className="grid grid-cols-1 gap-2 px-4 py-4 sm:grid-cols-2 lg:grid-cols-1">
                 {notes.map((note) => (
                   <button
                     key={note.id}
                     type="button"
                     onClick={() => setSelectedId(note.id)}
-                    className="mx-4 text-left"
+                    className="text-left"
                   >
                     <Card
                       style={{ backgroundColor: "var(--sidebar)" }}
@@ -154,11 +159,16 @@ export function NotesPage({
           </div>
         </div>
 
-        <div className="min-w-0 flex-1">
+        <div className={cn("min-w-0 flex-1", selectedId ? "block" : "hidden lg:block")}>
           {selected ? (
-            <NoteEditor key={selected.id} note={selected} onDeleted={() => setSelectedId(null)} />
+            <NoteEditor
+              key={selected.id}
+              note={selected}
+              onDeleted={() => setSelectedId(null)}
+              onBack={() => setSelectedId(null)}
+            />
           ) : (
-            <div className="p-8">
+            <div className="p-4 sm:p-8">
               <EmptyState
                 line="no notes yet"
                 action={

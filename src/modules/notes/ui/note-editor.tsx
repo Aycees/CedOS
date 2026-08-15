@@ -23,9 +23,14 @@ const SHORTCUTS: Record<string, (selected: string) => { text: string; caret: num
 export function NoteEditor({
   note,
   onDeleted,
+  onBack,
 }: {
   note: NoteView;
   onDeleted: () => void;
+  /** Renders a mobile-only "back to list" affordance when supplied — the
+   * modal-embedded quick-note editor (home's QuickActions) has no list to
+   * return to, so it omits this. */
+  onBack?: () => void;
 }) {
   const queryClient = useQueryClient();
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -130,8 +135,19 @@ export function NoteEditor({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-18 items-center gap-4 border-b border-border px-6">
-        <span className="kicker">
+      <div className="flex h-18 items-center gap-4 border-b border-border px-4 lg:px-6">
+        {onBack && (
+          <button
+            type="button"
+            aria-label="Back to notes"
+            onClick={onBack}
+            className="grid size-7 flex-none place-items-center rounded-md border border-border text-muted lg:hidden"
+          >
+            <BackGlyph />
+          </button>
+        )}
+
+        <span className="min-w-0 truncate kicker">
           edited {formatListDate(note.noteDate)} · {words} {words === 1 ? "word" : "words"}
         </span>
 
@@ -149,7 +165,7 @@ export function NoteEditor({
         </button>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col px-8 py-6">
+      <div className="flex min-h-0 flex-1 flex-col px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
         <input
           ref={titleRef}
           value={title}
@@ -196,6 +212,24 @@ function TrashGlyph() {
       <path d="M4 7h16" />
       <path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" />
       <path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
+    </svg>
+  );
+}
+
+function BackGlyph() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M15 18l-6-6 6-6" />
     </svg>
   );
 }

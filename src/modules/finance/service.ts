@@ -36,6 +36,37 @@ import type {
 
 const decimal = (value: unknown) => toStorage(String(value ?? 0));
 
+/**
+ * Ownership guards for the ids a write *points at*.
+ *
+ * `assertOwned` on the row being edited proves the caller owns that row and
+ * nothing else — a foreign key in the same payload is a second id the caller
+ * chose freely, and Prisma connects as a privileged role that will happily
+ * write it (decision log §5). Without these, a transaction can be reparented
+ * onto a stranger's account and a budget filed under a stranger's group: the
+ * row then belongs to a user it does not scope to, and vanishes from every
+ * `live(userId)` read that should have contained it.
+ *
+ * They resolve to NOT_FOUND rather than FORBIDDEN, for the reason `assertOwned`
+ * gives — a 403 would confirm the id exists.
+ */
+async function assertAccountOwned(userId: string, accountId: string): Promise<void> {
+  const account = await prisma.account.findUnique({ where: { id: accountId } });
+  assertOwned(account, userId, "account");
+}
+
+async function assertCategoryOwned(userId: string, categoryId: string): Promise<void> {
+  const category = await prisma.transactionCategory.findUnique({
+    where: { id: categoryId },
+  });
+  assertOwned(category, userId, "category");
+}
+
+async function assertBudgetGroupOwned(userId: string, groupId: string): Promise<void> {
+  const group = await prisma.budgetGroup.findUnique({ where: { id: groupId } });
+  assertOwned(group, userId, "budget group");
+}
+
 // ---------------------------------------------------------------------------
 // Accounts
 // ---------------------------------------------------------------------------
@@ -357,8 +388,8 @@ export async function createTransaction(
   userId: string,
   input: CreateTransactionInput,
 ) {
-  const account = await prisma.account.findUnique({ where: { id: input.accountId } });
-  assertOwned(account, userId, "account");
+  await assertAccountOwned(userId, input.accountId);
+  if (input.categoryId) await assertCategoryOwned(userId, input.categoryId);
 
   // Sign is derived from the type so the two can never disagree — an EXPENSE
   // is always an outflow regardless of how the amount was typed.
@@ -398,6 +429,9 @@ export async function updateTransaction(
       "A transfer is two paired rows — delete it and make a new one.",
     );
   }
+
+  if (input.accountId !== undefined) await assertAccountOwned(userId, input.accountId);
+  if (input.categoryId) await assertCategoryOwned(userId, input.categoryId);
 
   const type = input.type ?? (existing!.type as "INCOME" | "EXPENSE");
   const magnitude = Math.abs(Number(input.amount ?? existing!.amount));
@@ -591,6 +625,8 @@ export async function listBudgets(
 }
 
 export async function createBudget(userId: string, input: CreateBudgetInput) {
+  if (input.groupId) await assertBudgetGroupOwned(userId, input.groupId);
+
   const category = await resolveCategoryByName(userId, input.name);
 
   return prisma.budget.create({
@@ -613,6 +649,8 @@ export async function updateBudget(userId: string, input: UpdateBudgetInput) {
     userId,
     "budget",
   );
+
+  if (input.groupId) await assertBudgetGroupOwned(userId, input.groupId);
 
   if (input.name !== undefined) {
     await prisma.transactionCategory.update({

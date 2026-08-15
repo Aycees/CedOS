@@ -1,19 +1,17 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import { formatListDate } from "@/core/date";
+import { formatEntryDay, formatEntryMonth } from "@/core/date";
 import { newId } from "@/core/ids";
 import { api } from "@/core/mutation/client";
 import { Button } from "@/core/ui/button";
-import { Card } from "@/core/ui/card";
-import { Input, Textarea } from "@/core/ui/input";
-import { Modal, ModalActions } from "@/core/ui/modal";
-import { EmptyState } from "@/core/ui/page-header";
+import { cn } from "@/core/ui/cn";
+import { EmptyState, PageHeader } from "@/core/ui/page-header";
 import type { EntryView } from "../schema";
 
-const JOURNAL_KEY = ["journal"];
+import { JournalEntry } from "./journal-entry";
 
 export function JournalPage({
   initial,
@@ -22,172 +20,113 @@ export function JournalPage({
   initial: EntryView[];
   todayIso: string;
 }) {
-  const [editing, setEditing] = useState<EntryView | null>(null);
-  const [creating, setCreating] = useState(false);
+  const queryClient = useQueryClient();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data: entries = initial } = useQuery({
-    queryKey: JOURNAL_KEY,
+    queryKey: ["journal"],
     queryFn: () => api.get<EntryView[]>("/api/journal"),
     initialData: initial,
   });
 
-  return (
-    <div className="max-w-190 p-8">
-      <div className="mb-5">
-        <Button onClick={() => setCreating(true)}>+ new entry</Button>
-      </div>
+  // Falls back to the most recent entry whenever nothing has been explicitly
+  // selected yet, same pattern as Notes.
+  const effectiveId = selectedId ?? entries[0]?.id ?? null;
+  const selected = entries.find((entry) => entry.id === effectiveId) ?? null;
 
-      {entries.length === 0 ? (
-        <EmptyState
-          line="no entries yet"
-          action={
-            <Button variant="dashed" className="w-full" onClick={() => setCreating(true)}>
-              + write today&rsquo;s entry
-            </Button>
-          }
-        />
-      ) : (
-        <div className="flex flex-col gap-3.5">
-          {entries.map((entry) => (
-            <Card key={entry.id}>
-              <button
-                type="button"
-                onClick={() => setEditing(entry)}
-                className="w-full text-left"
-              >
-                <div className="kicker">{formatListDate(entry.entryDate)}</div>
-                {/* Long entries preview rather than render in full (spec §7). */}
-                <p className="m-0 mt-2 line-clamp-4 whitespace-pre-wrap font-serif text-[16.5px] leading-[1.65]">
-                  {entry.body.trim() || "Nothing written down yet"}
-                </p>
-              </button>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {(creating || editing) && (
-        <EntryModal
-          entry={editing}
-          todayIso={todayIso}
-          onClose={() => {
-            setCreating(false);
-            setEditing(null);
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function EntryModal({
-  entry,
-  todayIso,
-  onClose,
-}: {
-  entry: EntryView | null;
-  todayIso: string;
-  onClose: () => void;
-}) {
-  const queryClient = useQueryClient();
-  const [entryDate, setEntryDate] = useState(entry?.entryDate ?? todayIso);
-  const [body, setBody] = useState(entry?.body ?? "");
-  const [sameDay, setSameDay] = useState<EntryView[]>([]);
-
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: JOURNAL_KEY });
-    onClose();
-  };
-
-  /*
-   * A4: multiple entries per date are allowed. So this looks for existing
-   * entries on the chosen date and offers a hint — it never blocks the save.
-   */
-  useEffect(() => {
-    const params = new URLSearchParams({ onDate: entryDate });
-    if (entry?.id) params.set("exclude", entry.id);
-    let cancelled = false;
-
-    void api
-      .get<EntryView[]>(`/api/journal?${params}`)
-      .then((found) => {
-        if (!cancelled) setSameDay(found);
-      })
-      .catch(() => setSameDay([]));
-
-    return () => {
-      cancelled = true;
-    };
-  }, [entryDate, entry?.id]);
-
-  const save = useMutation({
-    mutationFn: () =>
-      entry
-        ? api.patch("/api/journal", { id: entry.id, entryDate, body })
-        : api.post("/api/journal", { id: newId(), entryDate, body }),
-    onSuccess: invalidate,
-  });
-
-  const remove = useMutation({
-    mutationFn: () => api.delete(`/api/journal?id=${entry!.id}`),
-    onSuccess: invalidate,
+  const create = useMutation({
+    mutationFn: async () => {
+      const id = newId();
+      await api.post("/api/journal", { id, entryDate: todayIso, body: "" });
+      return id;
+    },
+    onSuccess: (id) => {
+      void queryClient.invalidateQueries({ queryKey: ["journal"] });
+      setSelectedId(id);
+    },
   });
 
   return (
-    <Modal
-      open
-      onOpenChange={(open) => !open && onClose()}
-      kicker={entry ? "EDIT ENTRY" : "NEW ENTRY"}
-      title={entry ? "Edit entry" : "Write today's entry"}
-      width={520}
-    >
-      <div className="mt-5 flex flex-col gap-4">
-        <label className="flex flex-col gap-1.5">
-          <span className="kicker">Date</span>
-          <Input
-            type="date"
-            value={entryDate}
-            onChange={(event) => setEntryDate(event.target.value)}
-          />
-        </label>
-
-        {sameDay.length > 0 && (
-          <p className="m-0 font-mono text-[11.5px] text-muted">
-            you already wrote on this date — {sameDay.length}{" "}
-            {sameDay.length === 1 ? "entry" : "entries"} already here
-          </p>
-        )}
-
-        <label className="flex flex-col gap-1.5">
-          <span className="kicker">Entry</span>
-          {/* Plain prose, no markdown structure — that boundary with Notes
-              is deliberate (product spec §7). */}
-          <Textarea
-            rows={12}
-            value={body}
-            onChange={(event) => setBody(event.target.value)}
-            placeholder="How was today?"
-            className="font-serif text-[16.5px] leading-[1.65]"
-          />
-        </label>
-      </div>
-
-      <ModalActions
-        destructive={
-          entry ? (
-            <Button variant="outline" onClick={() => remove.mutate()}>
-              delete
-            </Button>
-          ) : null
+    <>
+      <PageHeader
+        kicker={`Journal · ${entries.length} ${entries.length === 1 ? "entry" : "entries"}`}
+        title="Journal"
+        actions={
+          <Button onClick={() => create.mutate()} disabled={create.isPending}>
+            + new entry
+          </Button>
         }
-      >
-        <Button variant="outline" onClick={onClose}>
-          cancel
-        </Button>
-        <Button onClick={() => save.mutate()} disabled={save.isPending}>
-          save
-        </Button>
-      </ModalActions>
-    </Modal>
+      />
+
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div
+          className={cn(
+            "w-full flex-col border-border lg:w-70 lg:flex-none lg:border-r",
+            selectedId ? "hidden lg:flex" : "flex",
+          )}
+        >
+          <div className="flex-1 overflow-auto p-4 lg:p-5">
+            {entries.length === 0 ? (
+              <EmptyState line="no entries yet" />
+            ) : (
+              <div className="flex flex-col gap-1">
+                {entries.map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => setSelectedId(entry.id)}
+                    className={cn(
+                      "w-full rounded-card px-3 py-3 text-left",
+                      entry.id === effectiveId
+                        ? "bg-card shadow-[inset_0_0_0_1px_var(--border)]"
+                        : "bg-transparent",
+                    )}
+                  >
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-mono text-[22px] leading-none">
+                        {formatEntryDay(entry.entryDate)}
+                      </span>
+                      <span className="font-mono text-[10.5px] tracking-widest text-muted">
+                        {formatEntryMonth(entry.entryDate)}
+                      </span>
+                    </div>
+                    <p className="m-0 mt-1.5 line-clamp-3 font-serif text-[13.5px] leading-normal text-muted">
+                      {entry.body.trim().slice(0, 90) || "Nothing written down yet"}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className={cn("min-w-0 flex-1", selectedId ? "block" : "hidden lg:block")}>
+          {selected ? (
+            <JournalEntry
+              key={selected.id}
+              entry={selected}
+              onDeleted={() => setSelectedId(null)}
+              onBack={() => setSelectedId(null)}
+            />
+          ) : (
+            <div className="p-4 sm:p-8">
+              <EmptyState
+                line="no entries yet"
+                action={
+                  <Button
+                    variant="dashed"
+                    className="w-full"
+                    onClick={() => create.mutate()}
+                    disabled={create.isPending}
+                  >
+                    + write your first entry
+                  </Button>
+                }
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   );
 }

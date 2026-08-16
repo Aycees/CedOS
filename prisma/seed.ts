@@ -5,6 +5,8 @@ import { DateTime } from "luxon";
 import { uuidv7 } from "uuidv7";
 
 import { PrismaClient } from "../src/generated/prisma/client";
+import { addDays, daysBetween, dueDatesBetween, weekBounds } from "../src/modules/habits/engine/cadence";
+import type { CadenceType, CompletionType, IsoDate, Schedule } from "../src/modules/habits/engine/types";
 
 /**
  * Development seed.
@@ -57,6 +59,7 @@ async function main() {
 
   await seedTasks(user.id);
   await seedJournal(user.id);
+  await seedHabits(user.id);
 
   console.log(`Seeded user ${user.id} (${email})`);
   if (!process.env.SEED_USER_ID) {
@@ -120,6 +123,272 @@ async function seedJournal(userId: string) {
       ),
     ],
   });
+}
+
+type HabitDef = {
+  name: string;
+  color: string;
+  timeSlot: "MORNING" | "AFTERNOON" | "EVENING" | "ANYTIME";
+  cadenceType: CadenceType;
+  weekdays?: number[];
+  timesPerWeek?: number;
+  intervalDays?: number;
+  completionType: CompletionType;
+  targetValue?: number;
+  unit?: string;
+  /** Baseline recent-weeks success rate (0–1); ramps up further for the trailing 3 weeks. */
+  strength: number;
+};
+
+const HABIT_DEFS: HabitDef[] = [
+  {
+    name: "Water",
+    color: "blue",
+    timeSlot: "ANYTIME",
+    cadenceType: "DAILY",
+    completionType: "COUNT",
+    targetValue: 8,
+    unit: "glasses",
+    strength: 0.8,
+  },
+  {
+    name: "Morning walk",
+    color: "green",
+    timeSlot: "MORNING",
+    cadenceType: "TIMES_PER_WEEK",
+    timesPerWeek: 4,
+    completionType: "BINARY",
+    strength: 0.85,
+  },
+  {
+    name: "Read",
+    color: "sky",
+    timeSlot: "EVENING",
+    cadenceType: "DAILY",
+    completionType: "COUNT",
+    targetValue: 20,
+    unit: "pages",
+    strength: 0.6,
+  },
+  {
+    name: "Log the day's spending",
+    color: "terracotta",
+    timeSlot: "EVENING",
+    cadenceType: "DAILY",
+    completionType: "BINARY",
+    strength: 0.75,
+  },
+  {
+    name: "Thesis block",
+    color: "violet",
+    timeSlot: "MORNING",
+    cadenceType: "WEEKDAYS",
+    weekdays: [1, 2, 3, 4, 5],
+    completionType: "COUNT",
+    targetValue: 90,
+    unit: "min",
+    strength: 0.55,
+  },
+  {
+    name: "Stretch",
+    color: "mauve",
+    timeSlot: "ANYTIME",
+    cadenceType: "DAILY",
+    completionType: "BINARY",
+    strength: 0.5,
+  },
+  {
+    name: "Take vitamins",
+    color: "red",
+    timeSlot: "MORNING",
+    cadenceType: "DAILY",
+    completionType: "BINARY",
+    strength: 0.9,
+  },
+  {
+    name: "Meal prep",
+    color: "warmgray",
+    timeSlot: "AFTERNOON",
+    cadenceType: "INTERVAL",
+    intervalDays: 7,
+    completionType: "BINARY",
+    strength: 0.7,
+  },
+];
+
+const HABIT_SEED_DAYS = 200;
+
+/**
+ * ~6.5 months of logs per habit, generated against the real cadence engine
+ * (`dueDatesBetween`) rather than hand-rolled date math — the point is to
+ * exercise the same due-date/streak/rate logic the app runs live, per system
+ * design §7 ("bugs that matter only appear over long spans").
+ */
+async function seedHabits(userId: string) {
+  if (await prisma.habit.count({ where: { userId } })) return;
+
+  const today = DateTime.now().setZone(TIMEZONE).toFormat("yyyy-MM-dd");
+  const start = addDays(today, -HABIT_SEED_DAYS);
+
+  for (const def of HABIT_DEFS) {
+    const habitId = uuidv7();
+    const scheduleId = uuidv7();
+    const anchorDate = def.cadenceType === "INTERVAL" ? start : null;
+
+    const schedule: Schedule = {
+      id: scheduleId,
+      cadenceType: def.cadenceType,
+      weekdays: def.weekdays ?? [],
+      timesPerWeek: def.timesPerWeek ?? null,
+      intervalDays: def.intervalDays ?? null,
+      anchorDate,
+      completionType: def.completionType,
+      targetValue: def.targetValue ?? null,
+      unit: def.unit ?? null,
+      effectiveFrom: start,
+      effectiveTo: null,
+    };
+
+    await prisma.habit.create({
+      data: { id: habitId, userId, name: def.name, color: def.color, timeSlot: def.timeSlot },
+    });
+
+    await prisma.habitSchedule.create({
+      data: {
+        id: scheduleId,
+        userId,
+        habitId,
+        cadenceType: schedule.cadenceType,
+        weekdays: schedule.weekdays,
+        timesPerWeek: schedule.timesPerWeek,
+        intervalDays: schedule.intervalDays,
+        anchorDate: anchorDate ? isoDate(anchorDate) : null,
+        completionType: schedule.completionType,
+        targetValue: schedule.targetValue,
+        unit: schedule.unit,
+        effectiveFrom: isoDate(start),
+        effectiveTo: null,
+      },
+    });
+
+    const logs = simulateLogs(schedule, start, today, def.strength);
+    if (logs.length === 0) continue;
+
+    await prisma.habitLog.createMany({
+      data: logs.map((log) => ({
+        id: uuidv7(),
+        userId,
+        habitId,
+        scheduleId,
+        logDate: isoDate(log.date),
+        status: log.status,
+        value: log.value,
+        targetSnapshot: schedule.targetValue,
+        unitSnapshot: schedule.unit,
+      })),
+    });
+  }
+}
+
+type SimLog = { date: IsoDate; status: "LOGGED" | "SKIPPED"; value: number | null };
+
+const SKIP_CHANCE = 0.06;
+/** Recent weeks lean toward success so the current streak/heatmap tail reads well. */
+const RECENT_WINDOW_DAYS = 21;
+const RECENT_BOOST = 0.15;
+
+function successChance(date: IsoDate, today: IsoDate, base: number): number {
+  const boosted = daysBetween(date, today) <= RECENT_WINDOW_DAYS ? base + RECENT_BOOST : base;
+  return Math.min(0.95, Math.max(0.15, boosted));
+}
+
+function simulateLogs(
+  schedule: Schedule,
+  start: IsoDate,
+  today: IsoDate,
+  strength: number,
+): SimLog[] {
+  const rng = mulberry32(hashSeed(schedule.id));
+
+  if (schedule.cadenceType === "TIMES_PER_WEEK") {
+    return simulateTimesPerWeek(schedule, start, today, strength, rng);
+  }
+
+  const results: SimLog[] = [];
+  for (const date of dueDatesBetween([schedule], start, today)) {
+    const chance = successChance(date, today, strength);
+    const roll = rng();
+
+    if (roll < SKIP_CHANCE) {
+      results.push({ date, status: "SKIPPED", value: null });
+      continue;
+    }
+    if (roll < SKIP_CHANCE + chance * (1 - SKIP_CHANCE)) {
+      results.push({ date, status: "LOGGED", value: countValue(schedule, rng) });
+    }
+    // Otherwise: a genuine miss — no row at all.
+  }
+  return results;
+}
+
+/** TIMES_PER_WEEK is due every day (A5), so completion is a per-week pick rather than a per-day roll. */
+function simulateTimesPerWeek(
+  schedule: Schedule,
+  start: IsoDate,
+  today: IsoDate,
+  strength: number,
+  rng: () => number,
+): SimLog[] {
+  const results: SimLog[] = [];
+  const target = schedule.timesPerWeek ?? 1;
+  let cursor = weekBounds(start, 1).start;
+
+  while (cursor <= today) {
+    const { end } = weekBounds(cursor, 1);
+    const weekEnd = end > today ? today : end;
+    const candidates: IsoDate[] = [];
+    for (let d = cursor < start ? start : cursor; d <= weekEnd; d = addDays(d, 1)) {
+      candidates.push(d);
+    }
+
+    const chance = successChance(cursor, today, strength);
+    const shortfall = rng() < chance ? 0 : 1 + Math.floor(rng() * 2);
+    const picks = Math.max(0, Math.min(target, candidates.length) - shortfall);
+
+    const shuffled = [...candidates].sort(() => rng() - 0.5).slice(0, picks).sort();
+    for (const date of shuffled) results.push({ date, status: "LOGGED", value: null });
+
+    cursor = addDays(end, 1);
+  }
+  return results;
+}
+
+/** A logged COUNT day spans a bit under to well over target — some partial credit, mostly hits. */
+function countValue(schedule: Schedule, rng: () => number): number | null {
+  if (schedule.completionType !== "COUNT" || !schedule.targetValue) return null;
+  const factor = 0.7 + rng() * 0.7;
+  return Math.round(schedule.targetValue * factor * 100) / 100;
+}
+
+/** Small deterministic PRNG so a given habit's pattern is stable across seed runs. */
+function hashSeed(input: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function mulberry32(seed: number): () => number {
+  let a = seed;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 function task(

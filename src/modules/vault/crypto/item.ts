@@ -41,7 +41,7 @@ export const VAULT_CATEGORY_COLORS: Record<VaultCategory, string> = {
   WORK: "violet",
   SHOPPING: "terracotta",
   ENTERTAINMENT: "sky",
-  OTHER: "sand",
+  OTHER: "warmgray",
 };
 
 const vaultItemPlainSchema = z.object({

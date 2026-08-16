@@ -29,7 +29,7 @@ export function VaultUnlocked({
   return (
     <>
       <PageHeader
-        kicker="Secure"
+        kicker={`VAULT · ${items.length} SAVED`}
         title="Vault"
         actions={
           <>

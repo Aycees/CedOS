@@ -91,7 +91,7 @@ export function CredentialList({
       {filtered.length === 0 ? (
         <EmptyState line="no credentials match" />
       ) : (
-        <div className="max-w-180">
+        <div className="max-w-180 rounded-card border border-border bg-card px-3 sm:px-4">
           {filtered.map((item) => (
             <CredentialRow key={item.id} item={item} onEdit={() => onEdit(item)} />
           ))}
@@ -111,6 +111,8 @@ function CredentialRow({
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState<"username" | "password" | null>(null);
 
+  const accent = `var(--accent-${VAULT_CATEGORY_COLORS[item.category]})`;
+
   const reveal = () => {
     if (!revealed) {
       void api.post("/api/vault/audit", {
@@ -129,53 +131,73 @@ function CredentialRow({
   };
 
   return (
-    <div className="row-divider list-row flex flex-wrap items-center gap-3">
-      <span
-        aria-hidden
-        className="size-1.75 flex-none rounded-full"
-        style={{ background: `var(--accent-${VAULT_CATEGORY_COLORS[item.category]})` }}
-      />
-
+    <div className="row-divider list-row flex items-center gap-3">
       <button
         type="button"
         onClick={onEdit}
-        className="min-w-0 flex-1 text-left"
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
         aria-label={`Edit ${item.site}`}
       >
-        <span className="block font-mono text-[13px]">{item.site}</span>
-        <span className="block font-mono text-[10.5px] text-muted">
-          {item.username || "no username"}
+        <span
+          aria-hidden
+          className="flex size-7.5 flex-none items-center justify-center rounded-input font-mono text-[12px] font-medium"
+          style={{
+            background: `color-mix(in srgb, ${accent} 14%, transparent)`,
+            color: accent,
+          }}
+        >
+          {(item.site.charAt(0) || "?").toUpperCase()}
+        </span>
+
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-mono text-[13.5px] font-semibold text-text">
+            {item.site}
+          </span>
+          <span className="block truncate font-mono text-[11px] text-muted">
+            {item.username || "no username"} · {VAULT_CATEGORY_LABELS[item.category]}
+          </span>
+          {revealed && (
+            <span className="mt-1 block font-mono text-[12px] text-text sm:hidden">
+              {item.password || "—"}
+            </span>
+          )}
         </span>
       </button>
 
-      <span className="flex-none font-mono text-[12.5px] tracking-[0.08em] text-muted">
+      <span
+        className="hidden flex-none font-mono text-[12.5px] text-muted sm:block sm:w-28"
+        style={revealed ? { letterSpacing: 0, color: "var(--text)" } : { letterSpacing: "0.12em" }}
+      >
         {revealed ? item.password || "—" : "••••••••"}
       </span>
 
-      <div className="flex flex-none items-center gap-1.5">
+      <div className="flex flex-none items-center gap-0.5">
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
+          className="text-muted hover:text-text"
           onClick={reveal}
           aria-label={revealed ? `Hide password for ${item.site}` : `Reveal password for ${item.site}`}
         >
-          {revealed ? "hide" : "reveal"}
+          {revealed ? "hide" : "show"}
         </Button>
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
+          className="text-muted hover:text-text"
           onClick={() => copy("username")}
           aria-label={`Copy username for ${item.site}`}
         >
-          {copied === "username" ? "copied" : "copy user"}
+          {copied === "username" ? "copied" : "user"}
         </Button>
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
+          className="text-muted hover:text-text"
           onClick={() => copy("password")}
           aria-label={`Copy password for ${item.site}`}
         >
-          {copied === "password" ? "copied" : "copy pass"}
+          {copied === "password" ? "copied" : "pass"}
         </Button>
       </div>
     </div>

@@ -16,7 +16,8 @@ export function ChipToggle<T extends string>({
   className,
   "aria-label": ariaLabel,
 }: {
-  options: ReadonlyArray<{ label: string; value: T }>;
+  /** Per-option `color` overrides the group's `accent` — e.g. vault categories, where each option has its own fixed color. */
+  options: ReadonlyArray<{ label: string; value: T; color?: string }>;
   value: T;
   onChange: (value: T) => void;
   accent?: string;
@@ -27,6 +28,7 @@ export function ChipToggle<T extends string>({
     <div role="radiogroup" aria-label={ariaLabel} className={cn("flex flex-wrap gap-1.75", className)}>
       {options.map((option) => {
         const selected = option.value === value;
+        const optionAccent = option.color ?? accent;
         return (
           <button
             key={option.value}
@@ -36,8 +38,8 @@ export function ChipToggle<T extends string>({
             onClick={() => onChange(option.value)}
             className="rounded-input border px-3 py-1.75 font-mono text-[11.5px] text-text"
             style={{
-              borderColor: selected ? accent : "var(--border)",
-              background: selected ? `color-mix(in srgb, ${accent} 12%, transparent)` : "transparent",
+              borderColor: selected ? optionAccent : "var(--border)",
+              background: selected ? `color-mix(in srgb, ${optionAccent} 12%, transparent)` : "transparent",
             }}
           >
             {option.label}

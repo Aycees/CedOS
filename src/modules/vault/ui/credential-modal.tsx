@@ -6,11 +6,18 @@ import { userMessage } from "@/core/errors";
 import { newId } from "@/core/ids";
 import { api } from "@/core/mutation/client";
 import { Button } from "@/core/ui/button";
+import { ChipToggle } from "@/core/ui/chip-toggle";
 import { Input, Textarea } from "@/core/ui/input";
 import { Modal, ModalActions } from "@/core/ui/modal";
 
 import { bytesToBase64 } from "../crypto/base64";
-import { sealItem, VAULT_CATEGORIES, VAULT_CATEGORY_LABELS, type VaultCategory } from "../crypto/item";
+import {
+  sealItem,
+  VAULT_CATEGORIES,
+  VAULT_CATEGORY_COLORS,
+  VAULT_CATEGORY_LABELS,
+  type VaultCategory,
+} from "../crypto/item";
 import { getDek, setItems, type VaultItemDecrypted } from "./session";
 
 /**
@@ -112,70 +119,77 @@ export function CredentialModal({
       onOpenChange={(open) => !open && onClose()}
       kicker={item ? "EDIT CREDENTIAL" : "NEW CREDENTIAL"}
       title={item ? "Edit credential" : "New credential"}
+      titleVisible={false}
       width={440}
     >
-      <div className="mt-5 flex flex-col gap-4">
+      <div className="flex flex-col gap-4">
         <Input
           variant="ghost"
           value={site}
           onChange={(e) => setSite(e.target.value)}
-          placeholder="Site or service"
+          placeholder="Site or app name"
           aria-label="Site"
           autoFocus
         />
 
-        <label className="flex flex-col gap-1.5">
-          <span className="kicker">Username</span>
-          <Input value={username} onChange={(e) => setUsername(e.target.value)} />
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className="kicker">Password</span>
-          <div className="flex items-center gap-2">
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1.5">
+            <span className="kicker">Username / email</span>
             <Input
-              type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              aria-label="Password"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="you@example.com"
             />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowPassword((s) => !s)}
-              aria-label={showPassword ? "Hide password" : "Show password"}
-            >
-              {showPassword ? "hide" : "show"}
-            </Button>
-          </div>
-        </label>
+          </label>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="kicker">Password</span>
+            <div className="flex items-center gap-2">
+              <Input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                aria-label="Password"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowPassword((s) => !s)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? "hide" : "show"}
+              </Button>
+            </div>
+          </label>
+        </div>
 
         <label className="flex flex-col gap-1.5">
-          <span className="kicker">URL · optional</span>
+          <span className="kicker">Website URL</span>
           <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" />
         </label>
 
-        <label className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1.5">
           <span className="kicker">Category</span>
-          <select
+          <ChipToggle
+            aria-label="Category"
             value={category}
-            onChange={(e) => setCategory(e.target.value as VaultCategory)}
-            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
-          >
-            {VAULT_CATEGORIES.map((option) => (
-              <option key={option} value={option}>
-                {VAULT_CATEGORY_LABELS[option]}
-              </option>
-            ))}
-          </select>
-        </label>
+            onChange={setCategory}
+            options={VAULT_CATEGORIES.map((option) => ({
+              label: VAULT_CATEGORY_LABELS[option],
+              value: option,
+              color: `var(--accent-${VAULT_CATEGORY_COLORS[option]})`,
+            }))}
+          />
+        </div>
 
         <label className="flex flex-col gap-1.5">
-          <span className="kicker">Notes · optional</span>
+          <span className="kicker">Notes</span>
           <Textarea
             rows={3}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="2FA via Authenticator app…"
+            placeholder="Recovery codes, security questions…"
           />
         </label>
 

@@ -93,6 +93,11 @@ export function formatSidebarDate(date: DateTime): string {
   return date.toFormat("ccc · LLL d").toUpperCase();
 }
 
+/** "Saturday" — the habit day-card title. */
+export function formatWeekdayName(iso: IsoDate): string {
+  return DateTime.fromFormat(iso, ISO_DATE, { zone: "utc" }).toFormat("cccc");
+}
+
 /** "AUG 11, 2026" — list metadata. */
 export function formatListDate(iso: IsoDate): string {
   return DateTime.fromFormat(iso, ISO_DATE, { zone: "utc" })

@@ -14,7 +14,7 @@ import { Card } from "@/core/ui/card";
 import { cn } from "@/core/ui/cn";
 import { Input, Textarea } from "@/core/ui/input";
 import { Modal, ModalActions } from "@/core/ui/modal";
-import { PageHeader } from "@/core/ui/page-header";
+import { EmptyState, PageHeader } from "@/core/ui/page-header";
 
 import type { PushPreview, StopView, TripDetailView } from "../schema";
 import { formatTripRange, TripModal } from "./itinerary-page";
@@ -127,9 +127,19 @@ export function TripDetail({
                 </div>
 
                 {day.stops.length === 0 ? (
-                  <p className="m-0 py-8 text-center font-serif text-[15px] italic text-muted">
-                    nothing planned
-                  </p>
+                  <EmptyState
+                    line="nothing planned"
+                    action={
+                      <Button
+                        variant="dashed"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => setStopModal({ stop: null, date: day.date })}
+                      >
+                        + add stop
+                      </Button>
+                    }
+                  />
                 ) : (
                   day.stops.map((stop, i) => (
                     <StopRow

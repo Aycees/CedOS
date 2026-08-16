@@ -96,9 +96,35 @@
     color: inherit;
   }
 
+  /*
+   * Without this, native OS chrome (Safari/macOS most visibly) renders its
+   * own pill-shaped, heavily-rounded field instead of the design system's
+   * flat 8px-radius boxed input — the border-radius set on `.rounded-input`
+   * gets ignored in favour of the platform control's own. Scoped to input/
+   * textarea only: native `<select>` elements in this codebase rely on the
+   * browser's own dropdown arrow for their only visual affordance.
+   */
+  input,
+  textarea {
+    appearance: none;
+    -webkit-appearance: none;
+    border-radius: 0;
+  }
+
   input:focus,
   textarea:focus {
     outline: none;
+  }
+
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    appearance: none;
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type="number"] {
+    -moz-appearance: textfield;
   }
 
   ::-webkit-scrollbar {

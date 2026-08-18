@@ -7,7 +7,7 @@ import { prisma } from "@/core/db/client";
 import { assertOwned, live, softDeleted } from "@/core/db/scope";
 import { AppError } from "@/core/errors";
 import { newId } from "@/core/ids";
-import { add, toStorage } from "@/core/money";
+import { add, money, subtract, toStorage } from "@/core/money";
 import { CATEGORY_COLORS } from "@/modules/calendar/schema";
 
 import type {
@@ -135,8 +135,9 @@ export async function updateAccount(userId: string, input: UpdateAccountInput) {
       where: live(userId, { accountId: input.id }),
       _sum: { amount: true },
     });
-    const sumTx = Number(agg._sum.amount ?? 0);
-    openingBalance = toStorage(Number(input.balance) - sumTx);
+    openingBalance = toStorage(
+      subtract(String(input.balance), String(agg._sum.amount ?? 0)),
+    );
   }
 
   return prisma.account.update({
@@ -375,7 +376,7 @@ function collapseTransfers(rows: TransactionView[]): TransactionView[] {
 
     output.push({
       ...out,
-      amount: decimal(Math.abs(Number(out.amount))),
+      amount: decimal(money(String(out.amount)).abs()),
       transferFrom: out.accountName,
       transferTo: into.accountName,
     });
@@ -393,8 +394,8 @@ export async function createTransaction(
 
   // Sign is derived from the type so the two can never disagree — an EXPENSE
   // is always an outflow regardless of how the amount was typed.
-  const magnitude = Math.abs(Number(input.amount));
-  const amount = input.type === "EXPENSE" ? -magnitude : magnitude;
+  const magnitude = money(input.amount).abs();
+  const amount = input.type === "EXPENSE" ? magnitude.negated() : magnitude;
 
   return prisma.$transaction([
     prisma.transaction.create({
@@ -434,7 +435,7 @@ export async function updateTransaction(
   if (input.categoryId) await assertCategoryOwned(userId, input.categoryId);
 
   const type = input.type ?? (existing!.type as "INCOME" | "EXPENSE");
-  const magnitude = Math.abs(Number(input.amount ?? existing!.amount));
+  const magnitude = money(String(input.amount ?? existing!.amount)).abs();
 
   return prisma.transaction.update({
     where: { id: input.id },
@@ -444,7 +445,12 @@ export async function updateTransaction(
         ? { occurredOn: isoToDbDate(input.occurredOn) }
         : {}),
       ...(input.amount !== undefined || input.type !== undefined
-        ? { amount: toStorage(type === "EXPENSE" ? -magnitude : magnitude), type }
+        ? {
+            amount: toStorage(
+              type === "EXPENSE" ? magnitude.negated() : magnitude,
+            ),
+            type,
+          }
         : {}),
       ...(input.accountId !== undefined ? { accountId: input.accountId } : {}),
       ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
@@ -473,7 +479,7 @@ export async function createTransfer(userId: string, input: CreateTransferInput)
   assertOwned(from, userId, "account");
   assertOwned(to, userId, "account");
 
-  const magnitude = Math.abs(Number(input.amount));
+  const magnitude = money(input.amount).abs();
   const occurredOn = isoToDbDate(input.occurredOn);
 
   const common = {
@@ -559,7 +565,8 @@ async function computeBudgetSpend(
   });
 
   // Spend is stored as a negative outflow; a budget reads it as a positive.
-  return decimal(Math.abs(Math.min(0, Number(spend._sum?.amount ?? 0))));
+  const sum = money(String(spend._sum?.amount ?? 0));
+  return decimal(sum.isNegative() ? sum.abs() : 0);
 }
 
 /** Finds an existing category with this name (case-insensitive) or creates one. */
@@ -643,7 +650,11 @@ export async function createBudget(userId: string, input: CreateBudgetInput) {
   });
 }
 
-export async function updateBudget(userId: string, input: UpdateBudgetInput) {
+export async function updateBudget(
+  userId: string,
+  input: UpdateBudgetInput,
+  timezone: string,
+) {
   const existing = assertOwned(
     await prisma.budget.findUnique({ where: { id: input.id } }),
     userId,
@@ -660,9 +671,12 @@ export async function updateBudget(userId: string, input: UpdateBudgetInput) {
   }
 
   if (input.limitAmount !== undefined) {
-    const month = DateTime.now().toFormat("yyyy-MM");
+    // The month this cap is checked against is the *user's* current month;
+    // a server in another zone would validate against the wrong window near
+    // a month boundary. Every other DateTime.now() in the app is zoned.
+    const month = DateTime.now().setZone(timezone).toFormat("yyyy-MM");
     const spent = await computeBudgetSpend(userId, existing, month);
-    if (Number(input.limitAmount) < Number(spent)) {
+    if (money(input.limitAmount).lessThan(money(spent))) {
       throw new AppError(
         "PRECONDITION_FAILED",
         `The cap can't go below what's already spent (${spent}).`,
@@ -764,7 +778,7 @@ export async function updateDebt(userId: string, input: UpdateDebtInput) {
     });
     assertOwned(account, userId, "account");
 
-    const magnitude = Math.abs(Number(input.amount ?? existing!.amount));
+    const magnitude = money(String(input.amount ?? existing!.amount)).abs();
     const type = existing!.direction === "OWED_TO_ME" ? "INCOME" : "EXPENSE";
     const amount = type === "EXPENSE" ? -magnitude : magnitude;
 
@@ -888,7 +902,7 @@ export async function getOverview(
     accounts,
     totalBalance: decimal(add(...accounts.map((account) => account.balance))),
     income,
-    monthSpent: decimal(Math.abs(Number(spend._sum?.amount ?? 0))),
+    monthSpent: decimal(money(String(spend._sum?.amount ?? 0)).abs()),
     monthLabel: monthStart.toFormat("LLLL").toUpperCase(),
     recent,
   };

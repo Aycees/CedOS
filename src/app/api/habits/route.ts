@@ -1,3 +1,4 @@
+import { todayIso } from "@/core/date";
 import { readRoute, route } from "@/core/mutation/handler";
 import { addDays, daysBetween, weekBounds } from "@/modules/habits/engine/cadence";
 import {
@@ -20,7 +21,7 @@ const HISTORY_WEEKS = 26;
 export const GET = readRoute(async ({ session, searchParams }) => {
   const settings = await getSettings(session.userId);
   const today =
-    searchParams.get("today") ?? new Date().toISOString().slice(0, 10);
+    searchParams.get("today") ?? todayIso(session.timezone);
 
   if (searchParams.get("view") === "history") {
     const { start: weekStart } = weekBounds(today, 7);

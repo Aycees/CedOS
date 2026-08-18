@@ -206,7 +206,7 @@ function Overview({
     ? progress(data.monthSpent, data.income.amount)
     : 0;
   const remaining = data.income
-    ? Number(data.income.amount) - Number(data.monthSpent)
+    ? subtract(data.income.amount, data.monthSpent)
     : null;
 
   return (
@@ -408,8 +408,8 @@ function OverviewDebts({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   const outstanding = debts.filter((debt) => !debt.settledAt);
   const owedToMe = outstanding.filter((debt) => debt.direction === "OWED_TO_ME");
   const iOwe = outstanding.filter((debt) => debt.direction === "I_OWE");
-  const owedToMeTotal = owedToMe.reduce((sum, debt) => sum + Number(debt.amount), 0);
-  const iOweTotal = iOwe.reduce((sum, debt) => sum + Number(debt.amount), 0);
+  const owedToMeTotal = add(...owedToMe.map((debt) => debt.amount));
+  const iOweTotal = add(...iOwe.map((debt) => debt.amount));
 
   return (
     <Card>
@@ -1014,9 +1014,9 @@ function Debts({ accounts, today }: { accounts: AccountView[]; today: string }) 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         {DEBT_LISTS.map((list) => {
           const rows = debts.filter((debt) => debt.direction === list.direction);
-          const total = rows
-            .filter((debt) => !debt.settledAt)
-            .reduce((sum, debt) => sum + Number(debt.amount), 0);
+          const total = add(
+            ...rows.filter((debt) => !debt.settledAt).map((debt) => debt.amount),
+          );
 
           return (
             <div key={list.direction} className="flex flex-col gap-3.5">

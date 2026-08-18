@@ -14,7 +14,7 @@ import { deriveKek, DEFAULT_KDF_PARAMS, randomBytes, wrapDek } from "../crypto/k
 import { checkVerifier, makeVerifier } from "../crypto/verifier";
 import type { VaultSettingsView } from "../schema";
 import { disablePin, enablePin, isPinEnabled } from "./pin";
-import { getDek } from "./session";
+import { getDek, setAutoLockSeconds as armAutoLock } from "./session";
 
 /**
  * Master-password change (an O(1) DEK rewrap) and this device's PIN, in one
@@ -85,6 +85,9 @@ export function SecurityPanel({
         autoLockSeconds: seconds,
       });
       setAutoLockSeconds(seconds);
+      // Re-arm the live watchdog too, so shortening the timeout takes effect
+      // now rather than at the next unlock.
+      armAutoLock(seconds);
       onSettingsChanged();
     } finally {
       setAutoLockBusy(false);

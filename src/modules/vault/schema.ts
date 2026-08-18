@@ -11,34 +11,46 @@ import { VAULT_CATEGORIES } from "./crypto/item";
  * network.
  */
 
+/*
+ * Every Vault field on the wire is base64 ciphertext. The columns behind them
+ * are unbounded Postgres `text`, so without a cap a single request can commit
+ * an arbitrarily large row — the shapes below bound each one at roughly an
+ * order of magnitude more than the real payload ever needs.
+ */
 const base64 = z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/, "Not valid base64.");
+
+/** Salts, IVs, wrapped keys and verifiers — all fixed-size, tens of bytes. */
+const base64Key = base64.max(2_000, "That value is too large.");
+
+/** A sealed credential: a handful of short fields plus AES-GCM overhead. */
+const base64Payload = base64.max(20_000, "That credential is too large.");
 
 export const initVaultSchema = z.object({
   id: z.uuid(),
-  kdfSalt: base64,
+  kdfSalt: base64Key,
   kdfMemoryKiB: z.number().int().positive(),
   kdfIterations: z.number().int().positive(),
   kdfParallelism: z.number().int().positive(),
-  wrappedDek: base64,
-  wrappedDekIv: base64,
-  recoveryDek: base64,
-  recoveryDekIv: base64,
-  verifier: base64,
-  verifierIv: base64,
+  wrappedDek: base64Key,
+  wrappedDekIv: base64Key,
+  recoveryDek: base64Key,
+  recoveryDekIv: base64Key,
+  verifier: base64Key,
+  verifierIv: base64Key,
 });
 
 export type InitVaultInput = z.infer<typeof initVaultSchema>;
 
 /** Master-password change: an O(1) rewrap of the DEK, no item is touched. */
 export const rewrapDekSchema = z.object({
-  kdfSalt: base64,
+  kdfSalt: base64Key,
   kdfMemoryKiB: z.number().int().positive(),
   kdfIterations: z.number().int().positive(),
   kdfParallelism: z.number().int().positive(),
-  wrappedDek: base64,
-  wrappedDekIv: base64,
-  verifier: base64,
-  verifierIv: base64,
+  wrappedDek: base64Key,
+  wrappedDekIv: base64Key,
+  verifier: base64Key,
+  verifierIv: base64Key,
 });
 
 export type RewrapDekInput = z.infer<typeof rewrapDekSchema>;
@@ -46,15 +58,16 @@ export type RewrapDekInput = z.infer<typeof rewrapDekSchema>;
 export const vaultPreferencesSchema = z.object({
   unlockMethod: z.enum(["PIN", "MASTER_PASSWORD", "BOTH"]),
   lockOnLoad: z.boolean().optional(),
-  autoLockSeconds: z.number().int().positive().optional(),
+  // Capped at 24h: an unbounded value silently disables auto-lock.
+  autoLockSeconds: z.number().int().positive().max(86_400).optional(),
 });
 
 export type VaultPreferencesInput = z.infer<typeof vaultPreferencesSchema>;
 
 export const upsertItemSchema = z.object({
   id: z.uuid(),
-  ciphertext: base64,
-  iv: base64,
+  ciphertext: base64Payload,
+  iv: base64Key,
 });
 
 export type UpsertItemInput = z.infer<typeof upsertItemSchema>;

@@ -39,7 +39,7 @@ export function VaultLockScreen({ settings }: { settings: VaultSettingsView }) {
 
   const finishUnlock = async (dek: CryptoKey) => {
     const items = await loadAndDecryptItems(dek);
-    unlock(dek, items);
+    unlock(dek, items, settings?.autoLockSeconds);
     audit("UNLOCK_SUCCESS");
   };
 

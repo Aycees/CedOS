@@ -106,6 +106,22 @@ function MoonGlyph() {
   );
 }
 
+/**
+ * Where to land after a successful sign-in.
+ *
+ * `proxy.ts` only ever writes a same-origin pathname into `next`, but nothing
+ * stops someone handing a victim `/sign-in?next=https://evil.example` — they
+ * would authenticate for real and then be thrown at attacker infrastructure,
+ * which is the classic open-redirect phishing pivot. So the value is treated
+ * as untrusted: one leading slash, and not `//` or `/\` (protocol-relative
+ * forms that browsers resolve to a different host).
+ */
+function safeNext(raw: string | null): string {
+  if (!raw || !raw.startsWith("/")) return "/";
+  if (raw.startsWith("//") || raw.startsWith("/\\")) return "/";
+  return raw;
+}
+
 function SignInForm() {
   const router = useRouter();
   const params = useSearchParams();
@@ -136,7 +152,7 @@ function SignInForm() {
     // A full navigation rather than a client push: the proxy needs to
     // see the new session cookie, and the root layout reads UserSettings to
     // stamp the appearance attributes on <html>.
-    window.location.assign(params.get("next") ?? "/");
+    window.location.assign(safeNext(params.get("next")));
     router.refresh();
   }
 

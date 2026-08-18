@@ -24,7 +24,7 @@ export function VaultUnlocked({
   const [editing, setEditing] = useState<VaultItemDecrypted | null>(null);
   const [securityOpen, setSecurityOpen] = useState(false);
 
-  const { warning, stillHere } = useAutoLock(settings?.autoLockSeconds ?? 300, true);
+  const { warning, stillHere } = useAutoLock();
 
   return (
     <>

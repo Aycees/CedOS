@@ -39,13 +39,15 @@ export function Input({
 }
 
 export function Textarea({
+  tinted = false,
   className,
   ...rest
-}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+}: TextareaHTMLAttributes<HTMLTextAreaElement> & { tinted?: boolean }) {
   return (
     <textarea
       className={cn(
-        "w-full resize-y bg-transparent text-text outline-none placeholder:text-muted",
+        "w-full resize-y text-text outline-none placeholder:text-muted",
+        tinted ? "bg-text/5" : "bg-transparent",
         VARIANTS.boxed,
         className,
       )}

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { deriveKek, generateDek, randomBytes, unwrapDek, wrapDek } from "./key";
+import { DEFAULT_KDF_PARAMS, KDF_BOUNDS } from "./kdf-params";
+import { initVaultSchema, rewrapDekSchema } from "../schema";
 import { openItem, sealItem, type VaultItemPlain } from "./item";
 import { deriveRkek, generateRecoveryKit } from "./recovery";
 import { checkVerifier, makeVerifier } from "./verifier";
@@ -85,5 +87,62 @@ describe("vault crypto", () => {
     // The item's own ciphertext/iv are untouched — it still opens under the
     // rewrapped DEK with no re-encryption step.
     await expect(openItem(ciphertext, iv, dekAfterRewrap)).resolves.toEqual(ITEM);
+  });
+
+  /*
+   * The wire schema is what stops a downgrade attack, so the floor has to
+   * stay at or below what every honest client actually sends. If someone
+   * raises DEFAULT_KDF_PARAMS without raising KDF_BOUNDS — or the reverse —
+   * setup starts failing validation against its own defaults, and this is
+   * where that shows up rather than in production.
+   */
+  it("accepts the defaults every client writes", () => {
+    const wire = {
+      id: "0198f3a1-0000-7000-8000-000000000000",
+      kdfSalt: "",
+      kdfMemoryKiB: DEFAULT_KDF_PARAMS.memoryKiB,
+      kdfIterations: DEFAULT_KDF_PARAMS.iterations,
+      kdfParallelism: DEFAULT_KDF_PARAMS.parallelism,
+      wrappedDek: "",
+      wrappedDekIv: "",
+      recoveryDek: "",
+      recoveryDekIv: "",
+      verifier: "",
+      verifierIv: "",
+    };
+
+    expect(initVaultSchema.safeParse(wire).success).toBe(true);
+  });
+
+  it("rejects a rewrap that would weaken the vault", () => {
+    const base = {
+      kdfSalt: "",
+      kdfMemoryKiB: DEFAULT_KDF_PARAMS.memoryKiB,
+      kdfIterations: DEFAULT_KDF_PARAMS.iterations,
+      kdfParallelism: DEFAULT_KDF_PARAMS.parallelism,
+      wrappedDek: "",
+      wrappedDekIv: "",
+      verifier: "",
+      verifierIv: "",
+    };
+
+    expect(rewrapDekSchema.safeParse(base).success).toBe(true);
+    // The downgrade: valid, positive, and brute-forceable offline.
+    expect(
+      rewrapDekSchema.safeParse({ ...base, kdfMemoryKiB: 1, kdfIterations: 1 }).success,
+    ).toBe(false);
+    // The mirror image: large enough that no unlock ever finishes.
+    expect(
+      rewrapDekSchema.safeParse({ ...base, kdfMemoryKiB: 2 ** 31 }).success,
+    ).toBe(false);
+  });
+
+  it("refuses to derive a key from unusable cost parameters", async () => {
+    await expect(
+      deriveKek("password", randomBytes(16), {
+        ...DEFAULT_KDF_PARAMS,
+        memoryKiB: KDF_BOUNDS.memoryKiB.max + 1,
+      }),
+    ).rejects.toThrow(/out of range/);
   });
 });

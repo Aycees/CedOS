@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { VAULT_CATEGORIES } from "./crypto/item";
+import { KDF_BOUNDS } from "./crypto/kdf-params";
 
 /**
  * Shared by the route handlers and the client crypto layer — but every
@@ -25,12 +26,40 @@ const base64Key = base64.max(2_000, "That value is too large.");
 /** A sealed credential: a handful of short fields plus AES-GCM overhead. */
 const base64Payload = base64.max(20_000, "That credential is too large.");
 
+/*
+ * Argon2id cost, bounded rather than merely positive.
+ *
+ * Every client in this app writes DEFAULT_KDF_PARAMS and nothing else, so an
+ * out-of-range value reaching here is a tampered client or a stolen session
+ * driving the endpoint directly. Left unbounded, `{"kdfMemoryKiB":1,
+ * "kdfIterations":1}` on setup or rewrap is a silent downgrade attack: the
+ * DEK gets re-wrapped under a KEK that a database dump brute-forces offline,
+ * the vault keeps working normally, and nothing in the UI ever shows it. The
+ * ceiling covers the mirror-image failure — a value large enough that the
+ * next unlock can never finish deriving the key. See crypto/kdf-params.ts.
+ */
+const kdfParams = {
+  kdfMemoryKiB: z
+    .number()
+    .int()
+    .min(KDF_BOUNDS.memoryKiB.min, "Key-derivation memory is below the minimum.")
+    .max(KDF_BOUNDS.memoryKiB.max, "Key-derivation memory is above the maximum."),
+  kdfIterations: z
+    .number()
+    .int()
+    .min(KDF_BOUNDS.iterations.min, "Too few key-derivation iterations.")
+    .max(KDF_BOUNDS.iterations.max, "Too many key-derivation iterations."),
+  kdfParallelism: z
+    .number()
+    .int()
+    .min(KDF_BOUNDS.parallelism.min, "Key-derivation parallelism is below the minimum.")
+    .max(KDF_BOUNDS.parallelism.max, "Key-derivation parallelism is above the maximum."),
+};
+
 export const initVaultSchema = z.object({
   id: z.uuid(),
   kdfSalt: base64Key,
-  kdfMemoryKiB: z.number().int().positive(),
-  kdfIterations: z.number().int().positive(),
-  kdfParallelism: z.number().int().positive(),
+  ...kdfParams,
   wrappedDek: base64Key,
   wrappedDekIv: base64Key,
   recoveryDek: base64Key,
@@ -44,9 +73,7 @@ export type InitVaultInput = z.infer<typeof initVaultSchema>;
 /** Master-password change: an O(1) rewrap of the DEK, no item is touched. */
 export const rewrapDekSchema = z.object({
   kdfSalt: base64Key,
-  kdfMemoryKiB: z.number().int().positive(),
-  kdfIterations: z.number().int().positive(),
-  kdfParallelism: z.number().int().positive(),
+  ...kdfParams,
   wrappedDek: base64Key,
   wrappedDekIv: base64Key,
   verifier: base64Key,

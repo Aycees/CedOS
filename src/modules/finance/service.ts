@@ -308,9 +308,17 @@ export async function deleteCategory(userId: string, id: string) {
 // Transactions
 // ---------------------------------------------------------------------------
 
+/** Nothing in the UI paginates yet, so this is the backstop against a list that grows for years. */
+const TRANSACTION_PAGE_SIZE = 200;
+
 export async function listTransactions(
   userId: string,
-  options: { query?: string; categoryId?: string; month?: string } = {},
+  options: {
+    query?: string;
+    categoryId?: string;
+    month?: string;
+    take?: number;
+  } = {},
 ): Promise<TransactionView[]> {
   const where: Record<string, unknown> = {};
 
@@ -330,6 +338,7 @@ export async function listTransactions(
     where: live(userId, where),
     orderBy: [{ occurredOn: "desc" }, { createdAt: "desc" }],
     include: { account: true, category: true },
+    take: options.take ?? TRANSACTION_PAGE_SIZE,
   });
 
   return collapseTransfers(rows.map(toTransactionView));
@@ -539,7 +548,70 @@ export async function deleteTransaction(userId: string, id: string) {
  * Transfers are excluded — moving money between your own accounts is not
  * spending, and counting it would double-count against the budget (G1).
  */
-/** Spend for one budget's active period. Shared by `listBudgets` and `updateBudget`'s cap guard. */
+/**
+ * Spend for many budgets at once.
+ *
+ * `listBudgets` used to call `computeBudgetSpend` in a loop — one aggregate
+ * round trip per budget, on a page that also runs `getOverview`, and which
+ * the Home page and the JSON export both hit as well. Every budget on the
+ * standard monthly period shares one window, so they collapse into a single
+ * groupBy; only CUSTOM windows, which are per-budget by definition, still
+ * need their own query. N+1 becomes 1 + (number of custom budgets).
+ */
+async function computeBudgetSpendBatch(
+  userId: string,
+  budgets: {
+    id: string;
+    categoryId: string;
+    period: string;
+    periodStart: Date | null;
+    periodEnd: Date | null;
+  }[],
+  month: string,
+): Promise<Map<string, string>> {
+  const spent = new Map<string, string>();
+  if (budgets.length === 0) return spent;
+
+  const monthly = budgets.filter((budget) => budget.period !== "CUSTOM");
+  const custom = budgets.filter((budget) => budget.period === "CUSTOM");
+
+  if (monthly.length > 0) {
+    const monthStart = DateTime.fromFormat(month, "yyyy-MM", { zone: "utc" });
+
+    const sums = await prisma.transaction.groupBy({
+      by: ["categoryId"],
+      where: live(userId, {
+        categoryId: { in: monthly.map((budget) => budget.categoryId) },
+        type: { not: "TRANSFER" as const },
+        occurredOn: {
+          gte: isoToDbDate(monthStart.toFormat("yyyy-MM-dd")),
+          lte: isoToDbDate(monthStart.endOf("month").toFormat("yyyy-MM-dd")),
+        },
+      }),
+      _sum: { amount: true },
+    });
+
+    const byCategory = new Map(sums.map((row) => [row.categoryId, row._sum.amount]));
+
+    for (const budget of monthly) {
+      // Spend is stored as a negative outflow; a budget reads it as positive.
+      const sum = money(String(byCategory.get(budget.categoryId) ?? 0));
+      spent.set(budget.id, decimal(sum.isNegative() ? sum.abs() : 0));
+    }
+  }
+
+  // Custom windows are rare and each needs its own range, so these stay
+  // per-budget — but they run together rather than in sequence.
+  await Promise.all(
+    custom.map(async (budget) => {
+      spent.set(budget.id, await computeBudgetSpend(userId, budget, month));
+    }),
+  );
+
+  return spent;
+}
+
+/** Spend for one budget's active period. Shared by the batch above and `updateBudget`'s cap guard. */
 async function computeBudgetSpend(
   userId: string,
   budget: { categoryId: string; period: string; periodStart: Date | null; periodEnd: Date | null },
@@ -596,9 +668,11 @@ export async function listBudgets(
     prisma.budgetGroup.findMany({ where: live(userId), orderBy: { sortOrder: "asc" } }),
   ]);
 
+  const spendByBudget = await computeBudgetSpendBatch(userId, budgets, month);
+
   const views: BudgetView[] = [];
   for (const budget of budgets) {
-    const spent = await computeBudgetSpend(userId, budget, month);
+    const spent = spendByBudget.get(budget.id) ?? decimal(0);
 
     views.push({
       id: budget.id,
@@ -882,7 +956,11 @@ export async function getOverview(
   const [accounts, income, recent] = await Promise.all([
     listAccounts(userId),
     getIncome(userId),
-    listTransactions(userId, {}).then((rows) => rows.slice(0, 8)),
+    // Fetch a small multiple of what is shown rather than the whole table.
+    // collapseTransfers folds each transfer's two rows into one, so taking
+    // exactly 8 could render fewer than 8; 32 covers any realistic run of
+    // consecutive transfers while still bounding the query.
+    listTransactions(userId, { take: 32 }).then((rows) => rows.slice(0, 8)),
   ]);
 
   const monthStart = DateTime.fromFormat(month, "yyyy-MM", { zone: "utc" });

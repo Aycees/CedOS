@@ -180,7 +180,7 @@ model CalendarEvent {
   sourceStopId String?        @unique @db.Uuid @map("source_stop_id")
   sourceStop   ItineraryStop? @relation(fields: [sourceStopId], references: [id], onDelete: Restrict)
 
-  @@index([userId, eventDate])
+  @@index([userId, deletedAt, eventDate])
   @@index([categoryId])
   @@map("calendar_events")
 }
@@ -211,7 +211,8 @@ model Task {
   userId String @db.Uuid @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId, bucket, sortOrder])
+  @@index([userId, deletedAt, bucket, sortOrder])
+  @@index([userId, deletedAt, completedAt])
   @@map("tasks")
 }
 
@@ -256,7 +257,7 @@ model JournalEntry {
 
   /// A4: an index, deliberately NOT unique — multiple entries per date are
   /// allowed. A unique constraint would create an error state in a calm app.
-  @@index([userId, entryDate])
+  @@index([userId, deletedAt, entryDate])
   @@map("journal_entries")
 }
 
@@ -308,7 +309,7 @@ model Habit {
   schedules HabitSchedule[]
   logs      HabitLog[]
 
-  @@index([userId, archivedAt, deletedAt])
+  @@index([userId, deletedAt, archivedAt])
   @@map("habits")
 }
 
@@ -481,7 +482,8 @@ model Transaction {
   categoryId String? @db.Uuid @map("category_id")
   category   TransactionCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 
-  @@index([userId, occurredOn])
+  @@index([userId, deletedAt, occurredOn])
+  @@index([userId, categoryId, occurredOn])
   @@index([accountId])
   @@index([categoryId])
   @@index([transferGroupId])
@@ -565,7 +567,7 @@ model Debt {
   userId String @db.Uuid @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId, direction, settledAt])
+  @@index([userId, deletedAt, settledAt])
   @@map("debts")
 }
 
@@ -588,7 +590,7 @@ model Trip {
 
   stops ItineraryStop[]
 
-  @@index([userId, startDate])
+  @@index([userId, deletedAt, startDate])
   @@map("trips")
 }
 

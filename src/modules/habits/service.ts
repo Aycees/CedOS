@@ -214,13 +214,52 @@ export async function habitSummary(
   return { bestOverall, dueToday, doneToday };
 }
 
-export async function countDueToday(
-  userId: string,
-  today: string,
-  weekStartsOn: number,
-): Promise<number> {
-  const { dueToday, doneToday } = await habitSummary(userId, today, weekStartsOn);
-  return dueToday - doneToday;
+/**
+ * The sidebar's "habits due" badge.
+ *
+ * Deliberately not `habitSummary`, which it used to call. The root layout
+ * renders this on every authenticated route, and `habitSummary` loads every
+ * HabitLog ever written — it has to, because `computeStreaks` walks back to
+ * each schedule's effectiveFrom. Ten habits logged daily for two years is
+ * ~7,300 full rows fetched and rehydrated to produce one integer, on every
+ * navigation, growing forever.
+ *
+ * Due-vs-done needs exactly two rows per habit: the schedule in force today,
+ * and today's log if there is one. `bestOverall` — the only part that needs
+ * the history — is discarded by every current caller of `habitSummary`.
+ */
+export async function countDueToday(userId: string, today: string): Promise<number> {
+  const day = isoToDbDate(today);
+
+  const habits = await prisma.habit.findMany({
+    where: live(userId, { archivedAt: null }),
+    include: {
+      schedules: {
+        where: {
+          effectiveFrom: { lte: day },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gte: day } }],
+        },
+        orderBy: { effectiveFrom: "desc" },
+        take: 1,
+      },
+      logs: { where: { logDate: day }, take: 1 },
+    },
+  });
+
+  let due = 0;
+
+  for (const habit of habits) {
+    // scheduleOn still arbitrates, so the selection rule stays in one place —
+    // the `where` above only spares the database sending versions it would
+    // have rejected anyway.
+    const active = scheduleOn(habit.schedules.map(toSchedule), today);
+    if (!active || !isDueOn(active, today)) continue;
+
+    const log = habit.logs[0] ? toLog(habit.logs[0]) : null;
+    if (!log || progressOf(log, active) < 1) due += 1;
+  }
+
+  return due;
 }
 
 export async function createHabit(userId: string, input: CreateHabitInput) {

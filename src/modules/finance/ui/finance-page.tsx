@@ -600,6 +600,12 @@ function Transactions({
   if (query.trim()) params.set("q", query.trim());
   if (categoryId) params.set("categoryId", categoryId);
 
+  // `month` was already part of the query key and the group labels, but was
+  // never actually sent — so the default, unfiltered tab asked for every
+  // transaction ever recorded. A text search still spans all time, which is
+  // what a search box implies; browsing is scoped to the month on screen.
+  if (!query.trim()) params.set("month", month);
+
   const { data: rows = [] } = useQuery({
     queryKey: ["finance", "transactions", query.trim(), categoryId, month],
     queryFn: () => api.get<TransactionView[]>(`/api/finance/transactions?${params}`),

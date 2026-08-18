@@ -19,6 +19,9 @@ export async function listEntries(userId: string): Promise<EntryView[]> {
     // two entries written on the same date keep a stable, meaningful order —
     // which A4 makes a normal case rather than an edge one.
     orderBy: [{ entryDate: "desc" }, { createdAt: "desc" }],
+    // Long-form prose, roughly one entry a day, kept forever. The two-pane
+    // view reads from the top of this list, so it never needs all of it.
+    take: 200,
   });
 
   return entries.map(toView);

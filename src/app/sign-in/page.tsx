@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
 import { createSupabaseBrowserClient } from "@/core/auth/supabase-browser";
+import { safeNext } from "@/core/auth/safe-redirect";
 import { AppearanceProvider, useAppearance } from "@/core/theme/appearance-provider";
 import { DEFAULT_APPEARANCE } from "@/core/theme/types";
 import { Button } from "@/core/ui/button";
@@ -106,22 +107,6 @@ function MoonGlyph() {
   );
 }
 
-/**
- * Where to land after a successful sign-in.
- *
- * `proxy.ts` only ever writes a same-origin pathname into `next`, but nothing
- * stops someone handing a victim `/sign-in?next=https://evil.example` — they
- * would authenticate for real and then be thrown at attacker infrastructure,
- * which is the classic open-redirect phishing pivot. So the value is treated
- * as untrusted: one leading slash, and not `//` or `/\` (protocol-relative
- * forms that browsers resolve to a different host).
- */
-function safeNext(raw: string | null): string {
-  if (!raw || !raw.startsWith("/")) return "/";
-  if (raw.startsWith("//") || raw.startsWith("/\\")) return "/";
-  return raw;
-}
-
 function SignInForm() {
   const router = useRouter();
   const params = useSearchParams();
@@ -129,6 +114,7 @@ function SignInForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   async function submit(event: React.FormEvent) {
@@ -137,10 +123,22 @@ function SignInForm() {
     setError(null);
 
     const supabase = createSupabaseBrowserClient();
+    const next = safeNext(params.get("next"));
     const { error: authError } =
       mode === "sign-in"
         ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password });
+        : await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              // Supabase's confirmation email redirects the browser here
+              // with a `?code=`, which /auth/callback exchanges for a
+              // session. Without this it falls back to the project's Auth
+              // "Site URL", which the confirmation link would otherwise
+              // land on with no way to complete the sign-in.
+              emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+            },
+          });
 
     setPending(false);
 
@@ -149,10 +147,16 @@ function SignInForm() {
       return;
     }
 
+    if (mode === "sign-up") {
+      setError(null);
+      setNotice("Check your email to confirm your account before signing in.");
+      return;
+    }
+
     // A full navigation rather than a client push: the proxy needs to
     // see the new session cookie, and the root layout reads UserSettings to
     // stamp the appearance attributes on <html>.
-    window.location.assign(safeNext(params.get("next")));
+    window.location.assign(next);
     router.refresh();
   }
 
@@ -168,7 +172,11 @@ function SignInForm() {
           className="mt-5"
           aria-label="Sign in or sign up"
           value={mode}
-          onChange={setMode}
+          onChange={(next) => {
+            setMode(next);
+            setError(null);
+            setNotice(null);
+          }}
           options={[
             { label: "Sign in", value: "sign-in" },
             { label: "Sign up", value: "sign-up" },
@@ -211,6 +219,9 @@ function SignInForm() {
 
           {error && (
             <p className="m-0 font-mono text-[11.5px] text-accent-red">{error}</p>
+          )}
+          {notice && (
+            <p className="m-0 font-mono text-[11.5px] text-muted">{notice}</p>
           )}
 
           <Button type="submit" disabled={pending} className="mt-1 justify-center">

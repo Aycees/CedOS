@@ -1,3 +1,4 @@
+import { todayIso } from "@/core/date";
 import { readRoute } from "@/core/mutation/handler";
 import { listAllEvents, listCategories as listCalendarCategories } from "@/modules/calendar/service";
 import {
@@ -27,7 +28,7 @@ import { listItems as listVaultItems } from "@/modules/vault/service";
  * "decrypt" option to opt into: there is nothing here it could do.
  */
 export const GET = readRoute(async ({ session }) => {
-  const month = new Date().toISOString().slice(0, 7);
+  const month = todayIso(session.timezone).slice(0, 7);
 
   const [
     tasks,

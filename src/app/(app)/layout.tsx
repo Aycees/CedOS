@@ -27,7 +27,7 @@ export default async function AppLayout({
   const [openTasks, todayEvents, habitsDue] = await Promise.all([
     countOpenTasks(session.userId),
     countTodayEvents(session.userId, session.timezone),
-    countDueToday(session.userId, todayIso(session.timezone), session.weekStartsOn),
+    countDueToday(session.userId, todayIso(session.timezone)),
   ]);
 
   return (

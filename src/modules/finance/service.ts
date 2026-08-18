@@ -7,7 +7,7 @@ import { prisma } from "@/core/db/client";
 import { assertOwned, live, softDeleted } from "@/core/db/scope";
 import { AppError } from "@/core/errors";
 import { newId } from "@/core/ids";
-import { add, toStorage } from "@/core/money";
+import { add, money, subtract, toStorage } from "@/core/money";
 import { CATEGORY_COLORS } from "@/modules/calendar/schema";
 
 import type {
@@ -135,8 +135,9 @@ export async function updateAccount(userId: string, input: UpdateAccountInput) {
       where: live(userId, { accountId: input.id }),
       _sum: { amount: true },
     });
-    const sumTx = Number(agg._sum.amount ?? 0);
-    openingBalance = toStorage(Number(input.balance) - sumTx);
+    openingBalance = toStorage(
+      subtract(String(input.balance), String(agg._sum.amount ?? 0)),
+    );
   }
 
   return prisma.account.update({
@@ -307,9 +308,17 @@ export async function deleteCategory(userId: string, id: string) {
 // Transactions
 // ---------------------------------------------------------------------------
 
+/** Nothing in the UI paginates yet, so this is the backstop against a list that grows for years. */
+const TRANSACTION_PAGE_SIZE = 200;
+
 export async function listTransactions(
   userId: string,
-  options: { query?: string; categoryId?: string; month?: string } = {},
+  options: {
+    query?: string;
+    categoryId?: string;
+    month?: string;
+    take?: number;
+  } = {},
 ): Promise<TransactionView[]> {
   const where: Record<string, unknown> = {};
 
@@ -329,6 +338,7 @@ export async function listTransactions(
     where: live(userId, where),
     orderBy: [{ occurredOn: "desc" }, { createdAt: "desc" }],
     include: { account: true, category: true },
+    take: options.take ?? TRANSACTION_PAGE_SIZE,
   });
 
   return collapseTransfers(rows.map(toTransactionView));
@@ -375,7 +385,7 @@ function collapseTransfers(rows: TransactionView[]): TransactionView[] {
 
     output.push({
       ...out,
-      amount: decimal(Math.abs(Number(out.amount))),
+      amount: decimal(money(String(out.amount)).abs()),
       transferFrom: out.accountName,
       transferTo: into.accountName,
     });
@@ -393,8 +403,8 @@ export async function createTransaction(
 
   // Sign is derived from the type so the two can never disagree — an EXPENSE
   // is always an outflow regardless of how the amount was typed.
-  const magnitude = Math.abs(Number(input.amount));
-  const amount = input.type === "EXPENSE" ? -magnitude : magnitude;
+  const magnitude = money(input.amount).abs();
+  const amount = input.type === "EXPENSE" ? magnitude.negated() : magnitude;
 
   return prisma.$transaction([
     prisma.transaction.create({
@@ -434,7 +444,7 @@ export async function updateTransaction(
   if (input.categoryId) await assertCategoryOwned(userId, input.categoryId);
 
   const type = input.type ?? (existing!.type as "INCOME" | "EXPENSE");
-  const magnitude = Math.abs(Number(input.amount ?? existing!.amount));
+  const magnitude = money(String(input.amount ?? existing!.amount)).abs();
 
   return prisma.transaction.update({
     where: { id: input.id },
@@ -444,7 +454,12 @@ export async function updateTransaction(
         ? { occurredOn: isoToDbDate(input.occurredOn) }
         : {}),
       ...(input.amount !== undefined || input.type !== undefined
-        ? { amount: toStorage(type === "EXPENSE" ? -magnitude : magnitude), type }
+        ? {
+            amount: toStorage(
+              type === "EXPENSE" ? magnitude.negated() : magnitude,
+            ),
+            type,
+          }
         : {}),
       ...(input.accountId !== undefined ? { accountId: input.accountId } : {}),
       ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
@@ -473,7 +488,7 @@ export async function createTransfer(userId: string, input: CreateTransferInput)
   assertOwned(from, userId, "account");
   assertOwned(to, userId, "account");
 
-  const magnitude = Math.abs(Number(input.amount));
+  const magnitude = money(input.amount).abs();
   const occurredOn = isoToDbDate(input.occurredOn);
 
   const common = {
@@ -533,7 +548,70 @@ export async function deleteTransaction(userId: string, id: string) {
  * Transfers are excluded — moving money between your own accounts is not
  * spending, and counting it would double-count against the budget (G1).
  */
-/** Spend for one budget's active period. Shared by `listBudgets` and `updateBudget`'s cap guard. */
+/**
+ * Spend for many budgets at once.
+ *
+ * `listBudgets` used to call `computeBudgetSpend` in a loop — one aggregate
+ * round trip per budget, on a page that also runs `getOverview`, and which
+ * the Home page and the JSON export both hit as well. Every budget on the
+ * standard monthly period shares one window, so they collapse into a single
+ * groupBy; only CUSTOM windows, which are per-budget by definition, still
+ * need their own query. N+1 becomes 1 + (number of custom budgets).
+ */
+async function computeBudgetSpendBatch(
+  userId: string,
+  budgets: {
+    id: string;
+    categoryId: string;
+    period: string;
+    periodStart: Date | null;
+    periodEnd: Date | null;
+  }[],
+  month: string,
+): Promise<Map<string, string>> {
+  const spent = new Map<string, string>();
+  if (budgets.length === 0) return spent;
+
+  const monthly = budgets.filter((budget) => budget.period !== "CUSTOM");
+  const custom = budgets.filter((budget) => budget.period === "CUSTOM");
+
+  if (monthly.length > 0) {
+    const monthStart = DateTime.fromFormat(month, "yyyy-MM", { zone: "utc" });
+
+    const sums = await prisma.transaction.groupBy({
+      by: ["categoryId"],
+      where: live(userId, {
+        categoryId: { in: monthly.map((budget) => budget.categoryId) },
+        type: { not: "TRANSFER" as const },
+        occurredOn: {
+          gte: isoToDbDate(monthStart.toFormat("yyyy-MM-dd")),
+          lte: isoToDbDate(monthStart.endOf("month").toFormat("yyyy-MM-dd")),
+        },
+      }),
+      _sum: { amount: true },
+    });
+
+    const byCategory = new Map(sums.map((row) => [row.categoryId, row._sum.amount]));
+
+    for (const budget of monthly) {
+      // Spend is stored as a negative outflow; a budget reads it as positive.
+      const sum = money(String(byCategory.get(budget.categoryId) ?? 0));
+      spent.set(budget.id, decimal(sum.isNegative() ? sum.abs() : 0));
+    }
+  }
+
+  // Custom windows are rare and each needs its own range, so these stay
+  // per-budget — but they run together rather than in sequence.
+  await Promise.all(
+    custom.map(async (budget) => {
+      spent.set(budget.id, await computeBudgetSpend(userId, budget, month));
+    }),
+  );
+
+  return spent;
+}
+
+/** Spend for one budget's active period. Shared by the batch above and `updateBudget`'s cap guard. */
 async function computeBudgetSpend(
   userId: string,
   budget: { categoryId: string; period: string; periodStart: Date | null; periodEnd: Date | null },
@@ -559,7 +637,8 @@ async function computeBudgetSpend(
   });
 
   // Spend is stored as a negative outflow; a budget reads it as a positive.
-  return decimal(Math.abs(Math.min(0, Number(spend._sum?.amount ?? 0))));
+  const sum = money(String(spend._sum?.amount ?? 0));
+  return decimal(sum.isNegative() ? sum.abs() : 0);
 }
 
 /** Finds an existing category with this name (case-insensitive) or creates one. */
@@ -589,9 +668,11 @@ export async function listBudgets(
     prisma.budgetGroup.findMany({ where: live(userId), orderBy: { sortOrder: "asc" } }),
   ]);
 
+  const spendByBudget = await computeBudgetSpendBatch(userId, budgets, month);
+
   const views: BudgetView[] = [];
   for (const budget of budgets) {
-    const spent = await computeBudgetSpend(userId, budget, month);
+    const spent = spendByBudget.get(budget.id) ?? decimal(0);
 
     views.push({
       id: budget.id,
@@ -643,7 +724,11 @@ export async function createBudget(userId: string, input: CreateBudgetInput) {
   });
 }
 
-export async function updateBudget(userId: string, input: UpdateBudgetInput) {
+export async function updateBudget(
+  userId: string,
+  input: UpdateBudgetInput,
+  timezone: string,
+) {
   const existing = assertOwned(
     await prisma.budget.findUnique({ where: { id: input.id } }),
     userId,
@@ -660,9 +745,12 @@ export async function updateBudget(userId: string, input: UpdateBudgetInput) {
   }
 
   if (input.limitAmount !== undefined) {
-    const month = DateTime.now().toFormat("yyyy-MM");
+    // The month this cap is checked against is the *user's* current month;
+    // a server in another zone would validate against the wrong window near
+    // a month boundary. Every other DateTime.now() in the app is zoned.
+    const month = DateTime.now().setZone(timezone).toFormat("yyyy-MM");
     const spent = await computeBudgetSpend(userId, existing, month);
-    if (Number(input.limitAmount) < Number(spent)) {
+    if (money(input.limitAmount).lessThan(money(spent))) {
       throw new AppError(
         "PRECONDITION_FAILED",
         `The cap can't go below what's already spent (${spent}).`,
@@ -764,7 +852,7 @@ export async function updateDebt(userId: string, input: UpdateDebtInput) {
     });
     assertOwned(account, userId, "account");
 
-    const magnitude = Math.abs(Number(input.amount ?? existing!.amount));
+    const magnitude = money(String(input.amount ?? existing!.amount)).abs();
     const type = existing!.direction === "OWED_TO_ME" ? "INCOME" : "EXPENSE";
     const amount = type === "EXPENSE" ? -magnitude : magnitude;
 
@@ -868,7 +956,11 @@ export async function getOverview(
   const [accounts, income, recent] = await Promise.all([
     listAccounts(userId),
     getIncome(userId),
-    listTransactions(userId, {}).then((rows) => rows.slice(0, 8)),
+    // Fetch a small multiple of what is shown rather than the whole table.
+    // collapseTransfers folds each transfer's two rows into one, so taking
+    // exactly 8 could render fewer than 8; 32 covers any realistic run of
+    // consecutive transfers while still bounding the query.
+    listTransactions(userId, { take: 32 }).then((rows) => rows.slice(0, 8)),
   ]);
 
   const monthStart = DateTime.fromFormat(month, "yyyy-MM", { zone: "utc" });
@@ -888,7 +980,7 @@ export async function getOverview(
     accounts,
     totalBalance: decimal(add(...accounts.map((account) => account.balance))),
     income,
-    monthSpent: decimal(Math.abs(Number(spend._sum?.amount ?? 0))),
+    monthSpent: decimal(money(String(spend._sum?.amount ?? 0)).abs()),
     monthLabel: monthStart.toFormat("LLLL").toUpperCase(),
     recent,
   };

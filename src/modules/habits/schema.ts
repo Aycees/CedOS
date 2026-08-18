@@ -24,7 +24,9 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date like 2026-08
 export const cadenceSchema = z
   .object({
     cadenceType: z.enum(["DAILY", "WEEKDAYS", "TIMES_PER_WEEK", "INTERVAL"]),
-    weekdays: z.array(z.number().int().min(1).max(7)).default([]),
+    // Seven distinct weekdays is the whole domain; the cap stops a client
+    // sending an arbitrarily long array of otherwise-valid numbers.
+    weekdays: z.array(z.number().int().min(1).max(7)).max(7).default([]),
     timesPerWeek: z.number().int().min(1).max(7).nullable().default(null),
     intervalDays: z.number().int().min(1).max(365).nullable().default(null),
     anchorDate: isoDate.nullable().default(null),

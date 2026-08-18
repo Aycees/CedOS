@@ -52,6 +52,9 @@ export async function listNotes(
   const notes = await prisma.note.findMany({
     where: live(userId, options.tag ? { tag: options.tag } : {}),
     orderBy: [{ noteDate: "desc" }, { createdAt: "desc" }],
+    // Notes accumulate for years and each row carries its full body. The grid
+    // shows a preview, so nothing on screen needs an unbounded list.
+    take: 200,
   });
 
   return notes.map(toView);

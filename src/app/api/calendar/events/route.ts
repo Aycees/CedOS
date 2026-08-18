@@ -1,3 +1,4 @@
+import { todayIso } from "@/core/date";
 import { readRoute, route } from "@/core/mutation/handler";
 import {
   createEventSchema,
@@ -19,7 +20,7 @@ export const GET = readRoute(async ({ session, searchParams }) => {
   const month = searchParams.get("month");
   return listEventsInMonth(
     session.userId,
-    month ?? new Date().toISOString().slice(0, 7),
+    month ?? todayIso(session.timezone).slice(0, 7),
     session.timezone,
   );
 });

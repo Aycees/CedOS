@@ -1,5 +1,7 @@
 import { argon2id } from "hash-wasm";
 
+import { DEFAULT_KDF_PARAMS, KDF_BOUNDS, type KdfParams } from "./kdf-params";
+
 /**
  * Envelope-encryption primitives (system design §4.2).
  *
@@ -18,18 +20,7 @@ import { argon2id } from "hash-wasm";
  * implementation, hence hash-wasm.
  */
 
-export type KdfParams = {
-  memoryKiB: number;
-  iterations: number;
-  parallelism: number;
-};
-
-/** Matches the VaultSettings column defaults — raisable later without a migration. */
-export const DEFAULT_KDF_PARAMS: KdfParams = {
-  memoryKiB: 65536,
-  iterations: 3,
-  parallelism: 1,
-};
+export { DEFAULT_KDF_PARAMS, KDF_BOUNDS, type KdfParams };
 
 /**
  * TypeScript's DOM lib types every WebCrypto buffer parameter as backed by a
@@ -58,6 +49,8 @@ export async function deriveKek(
   salt: Bytes,
   params: KdfParams,
 ): Promise<CryptoKey> {
+  assertDerivable(params);
+
   const bytes = await argon2id({
     password,
     salt,
@@ -73,6 +66,32 @@ export async function deriveKek(
     "encrypt",
     "decrypt",
   ]);
+}
+
+/**
+ * Rejects cost parameters that would make this call never return.
+ *
+ * Only the ceiling is checked here, not the floor. These params come back
+ * from the server describing how an *existing* vault was wrapped, and the
+ * only correct response to a weak stored value is still to unlock with it —
+ * refusing would lock the owner out of their own data to punish a write that
+ * already happened. The floor belongs on the write path, in `../schema.ts`,
+ * where it can stop the weak value being stored at all. What cannot be
+ * survived is an absurd value: Argon2id at 2^31 KiB does not fail, it hangs
+ * the tab trying to allocate, so a corrupted or tampered row would brick
+ * every future unlock with no in-app way back.
+ */
+function assertDerivable(params: KdfParams): void {
+  const tooLarge =
+    params.memoryKiB > KDF_BOUNDS.memoryKiB.max ||
+    params.iterations > KDF_BOUNDS.iterations.max ||
+    params.parallelism > KDF_BOUNDS.parallelism.max;
+
+  if (tooLarge) {
+    throw new Error(
+      "This vault's key-derivation settings are out of range. It cannot be unlocked on this device.",
+    );
+  }
 }
 
 /** A fresh, random, extractable-once DEK — wrapped immediately and never persisted raw. */

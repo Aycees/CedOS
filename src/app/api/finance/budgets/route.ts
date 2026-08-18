@@ -1,3 +1,4 @@
+import { todayIso } from "@/core/date";
 import { readRoute, route } from "@/core/mutation/handler";
 import {
   createBudgetSchema,
@@ -14,7 +15,7 @@ import {
 export const GET = readRoute(({ session, searchParams }) =>
   listBudgets(
     session.userId,
-    searchParams.get("month") ?? new Date().toISOString().slice(0, 7),
+    searchParams.get("month") ?? todayIso(session.timezone).slice(0, 7),
   ),
 );
 
@@ -23,7 +24,7 @@ export const POST = route(createBudgetSchema, async ({ session, body }) => {
 });
 
 export const PATCH = route(updateBudgetSchema, async ({ session, body }) => {
-  await updateBudget(session.userId, body);
+  await updateBudget(session.userId, body, session.timezone);
 });
 
 export const DELETE = route(deleteBudgetSchema, async ({ session, body }) => {

@@ -30,6 +30,8 @@ export function route<TSchema extends z.ZodType, TResult>(
     context: { params: Promise<Record<string, string>> },
   ): Promise<Response> => {
     try {
+      rejectCrossSite(request);
+
       const session = await requireSession();
       const params = (await context?.params) ?? {};
 
@@ -71,6 +73,30 @@ export function readRoute<TResult>(
       return toResponse(error);
     }
   };
+}
+
+/**
+ * Defence in depth against CSRF.
+ *
+ * Today nothing cross-site can drive a mutation anyway: @supabase/ssr issues
+ * its auth cookie with `SameSite=Lax`, so a forged cross-origin POST simply
+ * arrives without credentials and `requireSession()` rejects it. That is the
+ * whole of the current protection, and it lives in a dependency's default —
+ * relax it once for an unrelated reason (a cross-subdomain auth setup, say)
+ * and every mutation route in the app becomes forgeable, with nothing else to
+ * catch it. `readInput` also parses a POST body regardless of Content-Type,
+ * so the usual "a plain HTML form cannot send JSON" argument does not hold
+ * here either.
+ *
+ * Browsers send `Sec-Fetch-Site` on every request and it cannot be set by
+ * script. Non-browser callers (curl, a scheduler) omit it entirely, so an
+ * absent header has to pass — this rejects only the case a browser has
+ * explicitly labelled cross-site.
+ */
+function rejectCrossSite(request: Request): void {
+  if (request.headers.get("sec-fetch-site") === "cross-site") {
+    throw new AppError("FORBIDDEN", "Cross-site requests are not allowed.");
+  }
 }
 
 /**

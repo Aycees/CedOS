@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { newId } from "@/core/ids";
 import { api } from "@/core/mutation/client";
@@ -17,6 +17,9 @@ import {
   type VaultCategory,
 } from "../crypto/item";
 import type { VaultItemDecrypted } from "./session";
+
+/** How long a copied password may live on the system clipboard. */
+const CLIPBOARD_CLEAR_MS = 30_000;
 
 /**
  * All search, filter and sort happens here, over the already-decrypted array
@@ -110,6 +113,16 @@ function CredentialRow({
 }) {
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState<"username" | "password" | null>(null);
+  const clearTimer = useRef<number | null>(null);
+
+  // A pending clear must not outlive the row: locking the vault unmounts this
+  // tree, and a timer that fired afterwards would wipe an unrelated clipboard.
+  useEffect(
+    () => () => {
+      if (clearTimer.current !== null) window.clearTimeout(clearTimer.current);
+    },
+    [],
+  );
 
   const accent = `var(--accent-${VAULT_CATEGORY_COLORS[item.category]})`;
 
@@ -128,6 +141,21 @@ function CredentialRow({
     await navigator.clipboard.writeText(field === "username" ? item.username : item.password);
     setCopied(field);
     window.setTimeout(() => setCopied(null), 1500);
+
+    // The label resets after 1.5s, but the secret itself would otherwise sit
+    // on the system clipboard indefinitely — readable by any other app, any
+    // extension, or whoever uses the machine next. Auto-clearing a copied
+    // password is what every password manager does; the window is deliberately
+    // long enough to paste into a login form.
+    if (field !== "password") return;
+
+    if (clearTimer.current !== null) window.clearTimeout(clearTimer.current);
+    clearTimer.current = window.setTimeout(() => {
+      // Best-effort: the document may have lost focus by now, which makes
+      // writeText reject. Nothing useful to do about it either way.
+      void navigator.clipboard.writeText("").catch(() => {});
+      clearTimer.current = null;
+    }, CLIPBOARD_CLEAR_MS);
   };
 
   return (

@@ -15,15 +15,10 @@ import { cn } from "@/core/ui/cn";
 import { Input, Textarea } from "@/core/ui/input";
 import { Modal, ModalActions } from "@/core/ui/modal";
 import { EmptyState, PageHeader } from "@/core/ui/page-header";
+import { TimePicker } from "@/core/ui/time-picker";
 
 import type { PushPreview, StopView, TripDetailView } from "../schema";
 import { formatTripRange, TripModal } from "./itinerary-page";
-
-const TIMES = Array.from({ length: 24 * 4 }, (_, i) => {
-  const hours = String(Math.floor(i / 4)).padStart(2, "0");
-  const minutes = String((i % 4) * 15).padStart(2, "0");
-  return `${hours}:${minutes}`;
-});
 
 export function TripDetail({
   initial,
@@ -34,9 +29,9 @@ export function TripDetail({
 }) {
   const router = useRouter();
   const [editingTrip, setEditingTrip] = useState(false);
-  const [stopModal, setStopModal] = useState<{ stop: StopView | null; date: string } | null>(
-    null,
-  );
+  const [stopModal, setStopModal] = useState<
+    { stop: StopView | null; date: string; dayIndex?: number } | null
+  >(null);
   const [push, setPush] = useState<PushPreview | null>(null);
 
   const { data: trip = initial } = useQuery({
@@ -119,7 +114,9 @@ export function TripDetail({
                   </span>
                   <button
                     type="button"
-                    onClick={() => setStopModal({ stop: null, date: day.date })}
+                    onClick={() =>
+                      setStopModal({ stop: null, date: day.date, dayIndex: day.dayIndex })
+                    }
                     className="ml-auto font-mono text-[11.5px] text-accent"
                   >
                     + add stop
@@ -134,7 +131,9 @@ export function TripDetail({
                         variant="dashed"
                         size="sm"
                         className="w-full"
-                        onClick={() => setStopModal({ stop: null, date: day.date })}
+                        onClick={() =>
+                          setStopModal({ stop: null, date: day.date, dayIndex: day.dayIndex })
+                        }
                       >
                         + add stop
                       </Button>
@@ -146,7 +145,9 @@ export function TripDetail({
                       key={stop.id}
                       stop={stop}
                       divider={i > 0}
-                      onEdit={() => setStopModal({ stop, date: day.date })}
+                      onEdit={() =>
+                        setStopModal({ stop, date: day.date, dayIndex: day.dayIndex })
+                      }
                     />
                   ))
                 )}
@@ -170,6 +171,7 @@ export function TripDetail({
           stop={stopModal.stop}
           tripId={trip.id}
           date={stopModal.date}
+          dayIndex={stopModal.dayIndex}
           onClose={() => setStopModal(null)}
         />
       )}
@@ -200,21 +202,27 @@ function StopRow({
         divider && "row-divider",
       )}
     >
-      <span className="w-14 flex-none font-mono text-[12px] text-muted">
+      <span className="w-16 flex-none font-mono text-[12px] text-muted">
         {/* An untimed stop reads as unscheduled rather than as midnight. */}
-        {stop.startTime ?? "—"}
+        {stop.startTime
+          ? DateTime.fromFormat(stop.startTime, "HH:mm").toFormat("h:mm a")
+          : "—"}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block font-mono text-[13px]">{stop.activity}</span>
+        <span className="block font-mono text-[13.5px] font-medium text-text">
+          {stop.activity}
+        </span>
+        {stop.location && (
+          <span className="block font-mono text-[11.5px] text-muted">
+            ↳ {stop.location}
+          </span>
+        )}
         {stop.note && (
-          <span className="block font-mono text-[10.5px] text-muted">{stop.note}</span>
+          <span className="mt-1 block font-mono text-[11.5px] leading-relaxed text-muted">
+            {stop.note}
+          </span>
         )}
       </span>
-      {stop.location && (
-        <span className="flex-none font-mono text-[10.5px] text-muted">
-          {stop.location}
-        </span>
-      )}
       {stop.pushedEventId && (
         <span className="flex-none font-mono text-[10px] text-muted" title="on your calendar">
           ✓
@@ -228,11 +236,13 @@ function StopModal({
   stop,
   tripId,
   date,
+  dayIndex,
   onClose,
 }: {
   stop: StopView | null;
   tripId: string;
   date: string;
+  dayIndex?: number;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -268,12 +278,19 @@ function StopModal({
     onSuccess: done,
   });
 
+  const kicker = stop
+    ? dayIndex
+      ? `EDIT STOP · DAY ${dayIndex}`
+      : "EDIT STOP"
+    : `NEW STOP · DAY ${dayIndex}`;
+
   return (
     <Modal
       open
       onOpenChange={(open) => !open && onClose()}
-      kicker={stop ? "EDIT STOP" : "NEW STOP"}
+      kicker={kicker}
       title={activity || (stop ? "Edit stop" : "New stop")}
+      titleVisible={false}
       width={460}
     >
       <div className="mt-5 flex flex-col gap-4">
@@ -281,7 +298,7 @@ function StopModal({
           variant="ghost"
           value={activity}
           onChange={(e) => setActivity(e.target.value)}
-          placeholder="What's the plan?"
+          placeholder="What are you doing?"
           aria-label="Activity"
           autoFocus
         />
@@ -291,36 +308,31 @@ function StopModal({
             <span className="kicker">Date</span>
             <Input
               type="date"
+              tinted
               value={stopDate}
               onChange={(e) => setStopDate(e.target.value)}
             />
           </label>
           <label className="flex flex-1 flex-col gap-1.5">
             <span className="kicker">Time</span>
-            <select
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
-            >
-              {/* Untimed is a real choice — "decide the night before". */}
-              <option value="">no set time</option>
-              {TIMES.map((time) => (
-                <option key={time} value={time}>
-                  {time}
-                </option>
-              ))}
-            </select>
+            <TimePicker value={startTime} onChange={setStartTime} />
           </label>
         </div>
 
         <label className="flex flex-col gap-1.5">
           <span className="kicker">Location · optional</span>
-          <Input value={location} onChange={(e) => setLocation(e.target.value)} />
+          <Input
+            tinted
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="Where?"
+          />
         </label>
 
         <label className="flex flex-col gap-1.5">
           <span className="kicker">Note</span>
           <Textarea
+            tinted
             rows={3}
             value={note}
             onChange={(e) => setNote(e.target.value)}

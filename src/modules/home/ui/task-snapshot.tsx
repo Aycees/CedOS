@@ -13,17 +13,23 @@ import type { BucketView, TaskView } from "@/modules/tasks/schema";
  * (`PATCH /api/tasks`) — sharing the endpoint is what makes "updates the
  * count without a reload" true here for free, via the same query key Tasks
  * invalidates against.
+ *
+ * `initial` carries every bucket, not just today's, even though this card
+ * only renders TODAY: the Tasks page reads the same ["tasks"] cache entry,
+ * and seeding it with a today-only slice here would leave THIS_WEEK and
+ * SOMEDAY missing until that query re-fetches.
  */
-export function TaskSnapshot({ initial }: { initial: BucketView }) {
+export function TaskSnapshot({ initial }: { initial: BucketView[] }) {
   const queryClient = useQueryClient();
 
   const { data: buckets } = useQuery({
     queryKey: ["tasks"],
     queryFn: () => api.get<BucketView[]>("/api/tasks"),
-    initialData: [initial],
+    initialData: initial,
   });
 
-  const bucket = buckets.find((b) => b.bucket === "TODAY") ?? initial;
+  const initialToday = initial.find((b) => b.bucket === "TODAY");
+  const bucket = buckets.find((b) => b.bucket === "TODAY") ?? initialToday!;
 
   const toggle = useMutation({
     mutationFn: (task: TaskView) =>

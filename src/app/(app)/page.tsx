@@ -31,8 +31,6 @@ export default async function Home() {
     listTrips(session.userId),
   ]);
 
-  const todayBucket = buckets.find((bucket) => bucket.bucket === "TODAY")!;
-
   const allBudgets = [...budgets.groups.flatMap((group) => group.budgets), ...budgets.ungrouped];
   const budgetTotals =
     allBudgets.length === 0
@@ -58,7 +56,7 @@ export default async function Home() {
       <div className="flex-1 overflow-auto">
         <div className="grid max-w-260 grid-cols-1 items-start gap-5.5 p-8 lg:grid-cols-[1.3fr_1fr]">
           <TodaySchedule events={events} categories={categories} />
-          <TaskSnapshot initial={todayBucket} />
+          <TaskSnapshot initial={buckets} />
         </div>
 
         <GlanceStrip

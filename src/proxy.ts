@@ -41,6 +41,11 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/sign-in") ||
     request.nextUrl.pathname.startsWith("/auth/");
 
+  // The recovery flow lands an authenticated session here on purpose (the
+  // callback route just exchanged the code) — it must render the set-password
+  // form, not get bounced home by the "already signed in" rule below.
+  const isPasswordRecovery = request.nextUrl.pathname === "/auth/reset-password";
+
   if (!user && !isAuthRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/sign-in";
@@ -48,7 +53,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isAuthRoute) {
+  if (user && isAuthRoute && !isPasswordRecovery) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     url.search = "";

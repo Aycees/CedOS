@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+    <title>Confirm your email</title>
+  </head>
+  <body style="margin:0; padding:32px 16px; background-color:#F0EADE;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;">
+            <tr>
+              <td style="background-color:#FBF8F2; border:1px solid rgba(38,35,30,0.13); border-radius:12px; padding:32px 28px;">
+                <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#918876;">
+                  Ced OS
+                </div>
+                <h1 style="margin:12px 0 0; font-family: Georgia, 'Times New Roman', serif; font-size:24px; font-weight:400; letter-spacing:-0.01em; color:#262320;">
+                  Confirm your email
+                </h1>
+                <p style="margin:16px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12.5px; line-height:1.6; color:#262320;">
+                  Click below to confirm <strong>{{ .Email }}</strong> and finish creating your account.
+                </p>
+                <table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 0;">
+                  <tr>
+                    <td style="border-radius:8px; background-color:#A8664A;">
+                      <a href="{{ .ConfirmationURL }}" style="display:inline-block; padding:10px 20px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; color:#FBF8F2; text-decoration:none; border-radius:8px;">
+                        confirm email &rarr;
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:24px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:11px; line-height:1.6; color:#918876;">
+                  Or paste this link into your browser:<br />
+                  <a href="{{ .ConfirmationURL }}" style="color:#918876; word-break:break-all;">{{ .ConfirmationURL }}</a>
+                </p>
+                <p style="margin:20px 0 0; padding-top:16px; border-top:1px dashed rgba(38,35,30,0.16); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:11px; line-height:1.6; color:#918876;">
+                  If you didn&rsquo;t create a Ced OS account, you can ignore this email.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

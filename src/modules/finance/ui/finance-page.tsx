@@ -995,7 +995,16 @@ function Debts({ accounts, today }: { accounts: AccountView[]; today: string }) 
       personName: string;
       amount: string;
       note: string | null;
-    }) => api.post("/api/finance/debts", { id: newId(), ...vars }),
+      accountId: string;
+    }) =>
+      api.post("/api/finance/debts", {
+        id: newId(),
+        occurredOn: today,
+        transferGroupId: newId(),
+        outId: newId(),
+        inId: newId(),
+        ...vars,
+      }),
     onSuccess: invalidate,
   });
 
@@ -1046,6 +1055,7 @@ function Debts({ accounts, today }: { accounts: AccountView[]; today: string }) 
 
               <AddDebtForm
                 prompt={list.prompt}
+                accounts={accounts}
                 onAdd={(input) => create.mutate({ direction: list.direction, ...input })}
               />
             </div>
@@ -1182,15 +1192,21 @@ function DebtCard({
         />
         <span className="flex-none font-mono text-[19px] tracking-[-0.01em]">
           <span className="text-muted">₱</span>{" "}
-          <EditableField
-            value={debt.amount}
-            display={debt.amount.replace(/\.00$/, "")}
-            onCommit={(amount) => onEditField({ amount })}
-            ariaLabel={`${debt.personName} amount`}
-            inputMode="decimal"
-            validate={(v) => moneyPattern.test(v)}
-            className={cn("w-20 text-right", color)}
-          />
+          {settled ? (
+            <span className={cn("inline-block w-20 text-right", color)}>
+              {debt.amount.replace(/\.00$/, "")}
+            </span>
+          ) : (
+            <EditableField
+              value={debt.amount}
+              display={debt.amount.replace(/\.00$/, "")}
+              onCommit={(amount) => onEditField({ amount })}
+              ariaLabel={`${debt.personName} amount`}
+              inputMode="decimal"
+              validate={(v) => moneyPattern.test(v)}
+              className={cn("w-20 text-right", color)}
+            />
+          )}
         </span>
       </div>
 
@@ -1236,20 +1252,34 @@ function DebtCard({
 
 function AddDebtForm({
   prompt,
+  accounts,
   onAdd,
 }: {
   prompt: string;
-  onAdd: (input: { personName: string; amount: string; note: string | null }) => void;
+  accounts: AccountView[];
+  onAdd: (input: {
+    personName: string;
+    amount: string;
+    note: string | null;
+    accountId: string;
+  }) => void;
 }) {
   const [personName, setPersonName] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
+  const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
+  const hasAccount = accounts.length > 0;
 
-  const canAdd = personName.trim() && moneyPattern.test(amount.trim());
+  const canAdd = hasAccount && personName.trim() && moneyPattern.test(amount.trim()) && accountId;
 
   const submit = () => {
     if (!canAdd) return;
-    onAdd({ personName: personName.trim(), amount: amount.trim(), note: note.trim() || null });
+    onAdd({
+      personName: personName.trim(),
+      amount: amount.trim(),
+      note: note.trim() || null,
+      accountId,
+    });
     setPersonName("");
     setAmount("");
     setNote("");
@@ -1277,8 +1307,24 @@ function AddDebtForm({
         onChange={(e) => setNote(e.target.value)}
         placeholder="Description (optional)"
       />
+      {hasAccount && (
+        <label className="flex flex-col gap-1.5">
+          <span className="kicker">Which account?</span>
+          <select
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
+          >
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <Button className="w-full" onClick={submit} disabled={!canAdd}>
-        + add
+        {hasAccount ? "+ add" : "add an account first"}
       </Button>
     </div>
   );
@@ -1305,8 +1351,10 @@ function SettleDebtModal({
         id: debt.id,
         settled: true,
         accountId,
-        transactionId: newId(),
         occurredOn: today,
+        transferGroupId: newId(),
+        outId: newId(),
+        inId: newId(),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["finance"] });

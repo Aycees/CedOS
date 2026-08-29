@@ -149,20 +149,34 @@ export const updateBudgetGroupSchema = z.object({
   name: z.string().trim().min(1, "A group needs a name.").max(80),
 });
 
+/**
+ * A debt is created as a transfer pair (G1), same shape as createTransferSchema:
+ * one leg on the real account picked here, one leg on the hidden per-user
+ * "Debts" account, both client-generated ids so the write is one round trip.
+ */
 export const createDebtSchema = z.object({
   id: z.uuid(),
   direction: z.enum(["OWED_TO_ME", "I_OWE"]),
   personName: z.string().trim().min(1, "Who?").max(120),
   amount: moneyString,
   note: z.string().trim().max(500).nullable().optional(),
+  accountId: z.uuid("Pick an account."),
+  occurredOn: isoDate,
+  transferGroupId: z.uuid(),
+  outId: z.uuid(),
+  inId: z.uuid(),
 });
 
 /**
- * Covers both inline field edits (personName/amount/note) and settling.
- * Settling to true moves real money — G1's transfer pattern, one row this
- * time — so it needs the account plus a client-generated id for that row
- * (id) — settling to false is a pure status flip with no money side effect,
- * matching the "unsettle doesn't silently undo a real transaction" call.
+ * Covers inline field edits (personName/amount/note), settling, and
+ * unsettling.
+ *
+ * Settling posts a transfer pair (G1) reversing the creation leg, so it
+ * needs the account plus two client-generated ids for that pair — mirroring
+ * createDebtSchema. Unsettling is a pure status flip that also reverses the
+ * settlement transfer pair (see updateDebt in service.ts); it takes no extra
+ * fields. A settled debt's amount is locked (enforced in the service) so the
+ * debt row and its posted transfer legs never drift apart.
  */
 export const updateDebtSchema = z
   .object({
@@ -172,11 +186,16 @@ export const updateDebtSchema = z
     note: z.string().trim().max(500).nullable().optional(),
     settled: z.boolean().optional(),
     accountId: z.uuid().optional(),
-    transactionId: z.uuid().optional(),
     occurredOn: isoDate.optional(),
+    transferGroupId: z.uuid().optional(),
+    outId: z.uuid().optional(),
+    inId: z.uuid().optional(),
   })
   .superRefine((value, ctx) => {
-    if (value.settled && (!value.accountId || !value.transactionId || !value.occurredOn)) {
+    if (
+      value.settled &&
+      (!value.accountId || !value.occurredOn || !value.transferGroupId || !value.outId || !value.inId)
+    ) {
       ctx.addIssue({
         code: "custom",
         path: ["accountId"],
@@ -273,6 +292,7 @@ export type DebtView = {
   amount: string;
   note: string | null;
   settledAt: string | null;
+  accountId: string;
 };
 
 export type IncomeView = {

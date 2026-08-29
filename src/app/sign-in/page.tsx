@@ -132,12 +132,17 @@ function SignInForm() {
   const [screen, setScreen] = useState<Screen>({ kind: "form" });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isConfirmationError, setIsConfirmationError] = useState(
+    params.get("error") === "confirmation_failed",
+  );
   const [error, setError] = useState<string | null>(
-    params.get("error") === "confirmation_failed"
-      ? "That confirmation link is invalid or has expired."
+    isConfirmationError ? "That confirmation link is invalid or has expired." : null,
+  );
+  const [notice, setNotice] = useState<string | null>(
+    params.get("reset") === "success"
+      ? "Password updated. Sign in with your new password."
       : null,
   );
-  const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [resendAvailableAt, setResendAvailableAt] = useState(0);
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -153,10 +158,20 @@ function SignInForm() {
 
   const resendCooldown = Math.max(0, Math.ceil((resendAvailableAt - nowTick) / 1000));
 
+  // Starts (or restarts) the cooldown, refreshing `nowTick` in the same
+  // update so the very first render reflects the real remaining seconds
+  // instead of a stale `nowTick` from whenever the timer last ticked.
+  function startResendCooldown() {
+    const now = Date.now();
+    setNowTick(now);
+    setResendAvailableAt(now + RESEND_COOLDOWN_MS);
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setPending(true);
     setError(null);
+    setIsConfirmationError(false);
 
     const supabase = createSupabaseBrowserClient();
     const { error: authError } =
@@ -184,7 +199,7 @@ function SignInForm() {
 
     if (mode === "sign-up") {
       setScreen({ kind: "check-email", email, purpose: "signup" });
-      setResendAvailableAt(Date.now() + RESEND_COOLDOWN_MS);
+      startResendCooldown();
       return;
     }
 
@@ -213,7 +228,7 @@ function SignInForm() {
     }
 
     setScreen({ kind: "check-email", email, purpose: "reset" });
-    setResendAvailableAt(Date.now() + RESEND_COOLDOWN_MS);
+    startResendCooldown();
   }
 
   async function resend(targetEmail: string, purpose: "signup" | "reset") {
@@ -243,7 +258,7 @@ function SignInForm() {
     }
 
     setNotice(purpose === "signup" ? "Confirmation email sent." : "Reset email sent.");
-    setResendAvailableAt(Date.now() + RESEND_COOLDOWN_MS);
+    startResendCooldown();
   }
 
   async function signInWithGoogle() {
@@ -416,7 +431,7 @@ function SignInForm() {
           {error && (
             <div className="flex flex-col items-start gap-1.5">
               <p className="m-0 font-mono text-[11.5px] text-accent-red">{error}</p>
-              {params.get("error") === "confirmation_failed" && (
+              {isConfirmationError && (
                 <Button
                   type="button"
                   variant="ghost"

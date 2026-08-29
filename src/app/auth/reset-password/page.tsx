@@ -39,14 +39,19 @@ function ResetPasswordForm() {
     const supabase = createSupabaseBrowserClient();
     const { error: authError } = await supabase.auth.updateUser({ password });
 
-    setPending(false);
-
     if (authError) {
+      setPending(false);
       setError(authError.message);
       return;
     }
 
-    window.location.assign("/");
+    // Sign out the recovery session rather than carrying it into the app —
+    // anyone with access to the reset link would otherwise be left signed
+    // in. Requiring the new password at sign-in confirms the right person
+    // completed the reset.
+    await supabase.auth.signOut();
+
+    window.location.assign("/sign-in?reset=success");
     router.refresh();
   }
 

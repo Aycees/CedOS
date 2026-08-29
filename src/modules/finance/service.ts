@@ -53,6 +53,11 @@ const decimal = (value: unknown) => toStorage(String(value ?? 0));
 async function assertAccountOwned(userId: string, accountId: string): Promise<void> {
   const account = await prisma.account.findUnique({ where: { id: accountId } });
   assertOwned(account, userId, "account");
+  // The hidden per-user "Debts" account is only ever touched by the debt
+  // functions below — never by a regular transaction or transfer.
+  if (account!.isSystem) {
+    throw new AppError("VALIDATION_ERROR", "That account isn't available here.");
+  }
 }
 
 async function assertCategoryOwned(userId: string, categoryId: string): Promise<void> {
@@ -81,7 +86,7 @@ async function assertBudgetGroupOwned(userId: string, groupId: string): Promise<
  */
 export async function listAccounts(userId: string): Promise<AccountView[]> {
   const accounts = await prisma.account.findMany({
-    where: live(userId),
+    where: live(userId, { isSystem: false }),
     orderBy: { createdAt: "asc" },
   });
 
@@ -175,12 +180,16 @@ export async function deleteAccount(userId: string, input: DeleteAccountInput) {
   const account = await prisma.account.findUnique({ where: { id: input.id } });
   assertOwned(account, userId, "account");
 
+  if (account!.isSystem) {
+    throw new AppError("PRECONDITION_FAILED", "That account is managed automatically.");
+  }
+
   /*
    * Product spec §9: deleting the last account is blocked outright, because
    * every balance view in the app assumes at least one exists. The database
    * cannot express this, so it lives here.
    */
-  const remaining = await prisma.account.count({ where: live(userId) });
+  const remaining = await prisma.account.count({ where: live(userId, { isSystem: false }) });
   if (remaining <= 1) {
     throw new AppError(
       "PRECONDITION_FAILED",
@@ -210,10 +219,7 @@ export async function deleteAccount(userId: string, input: DeleteAccountInput) {
     if (!input.targetAccountId || input.targetAccountId === input.id) {
       throw new AppError("VALIDATION_ERROR", "Choose an account to move these to.");
     }
-    const target = await prisma.account.findUnique({
-      where: { id: input.targetAccountId },
-    });
-    assertOwned(target, userId, "account");
+    await assertAccountOwned(userId, input.targetAccountId);
 
     await prisma.$transaction([
       prisma.transaction.updateMany({
@@ -238,7 +244,10 @@ export async function deleteAccount(userId: string, input: DeleteAccountInput) {
 /** Product spec §9's case-insensitive duplicate rule, surfaced inline. */
 async function assertAccountNameFree(userId: string, name: string) {
   const clash = await prisma.account.findFirst({
-    where: live(userId, { name: { equals: name, mode: "insensitive" as const } }),
+    where: live(userId, {
+      isSystem: false,
+      name: { equals: name, mode: "insensitive" as const },
+    }),
   });
   if (clash) {
     throw new AppError("CONFLICT", `You already have an account called "${clash.name}".`, {
@@ -487,6 +496,12 @@ export async function createTransfer(userId: string, input: CreateTransferInput)
   ]);
   assertOwned(from, userId, "account");
   assertOwned(to, userId, "account");
+
+  // The hidden per-user "Debts" account is only ever touched by the debt
+  // functions below — never by a regular transfer.
+  if (from!.isSystem || to!.isSystem) {
+    throw new AppError("VALIDATION_ERROR", "That account isn't available here.");
+  }
 
   const magnitude = money(input.amount).abs();
   const occurredOn = isoToDbDate(input.occurredOn);
@@ -802,6 +817,31 @@ export async function deleteBudgetGroup(userId: string, id: string) {
 // Debts
 // ---------------------------------------------------------------------------
 
+/**
+ * The hidden per-user "Debts" account that backs every debt transfer.
+ *
+ * One shared account is enough: it is never shown to the user (listAccounts
+ * filters isSystem out), so its own net balance doesn't need to mean
+ * anything on its own — only the real-account legs and each Debt row's
+ * amount do. Created lazily on first use rather than at signup.
+ */
+async function getOrCreateDebtsAccount(userId: string) {
+  const existing = await prisma.account.findFirst({
+    where: live(userId, { isSystem: true }),
+  });
+  if (existing) return existing;
+
+  try {
+    return await prisma.account.create({
+      data: { id: newId(), userId, name: "Debts", kind: "OTHER", isSystem: true },
+    });
+  } catch {
+    // A partial unique index caps this at one system account per user
+    // (accounts_user_system_uniq); a concurrent call already won the race.
+    return prisma.account.findFirstOrThrow({ where: live(userId, { isSystem: true }) });
+  }
+}
+
 export async function listDebts(userId: string): Promise<DebtView[]> {
   const rows = await prisma.debt.findMany({
     where: live(userId),
@@ -815,63 +855,118 @@ export async function listDebts(userId: string): Promise<DebtView[]> {
     amount: decimal(row.amount),
     note: row.note,
     settledAt: row.settledAt?.toISOString() ?? null,
+    accountId: row.accountId,
   }));
 }
 
+/**
+ * A debt is created as a transfer pair (G1): one leg on the real account
+ * picked by the caller, one leg on the hidden "Debts" account. OWED_TO_ME
+ * (you lent cash out) makes the real leg an outflow; I_OWE (you borrowed
+ * cash in) makes it an inflow. Both legs are type TRANSFER with no category,
+ * so budgets and monthSpent exclude them with the same predicates that
+ * already exclude every other transfer.
+ */
 export async function createDebt(userId: string, input: CreateDebtInput) {
-  return prisma.debt.create({
-    data: {
-      id: input.id,
-      userId,
-      direction: input.direction,
-      personName: input.personName,
-      amount: input.amount,
-      note: input.note ?? null,
-    },
-  });
+  await assertAccountOwned(userId, input.accountId);
+  const debtsAccount = await getOrCreateDebtsAccount(userId);
+
+  const magnitude = money(input.amount).abs();
+  const realLegAmount = input.direction === "OWED_TO_ME" ? magnitude.negated() : magnitude;
+
+  const common = {
+    userId,
+    name: input.personName,
+    occurredOn: isoToDbDate(input.occurredOn),
+    type: "TRANSFER" as const,
+    transferGroupId: input.transferGroupId,
+    categoryId: null,
+  };
+
+  await prisma.$transaction([
+    prisma.transaction.create({
+      data: { ...common, id: input.outId, accountId: input.accountId, amount: toStorage(realLegAmount) },
+    }),
+    prisma.transaction.create({
+      data: {
+        ...common,
+        id: input.inId,
+        accountId: debtsAccount.id,
+        amount: toStorage(realLegAmount.negated()),
+      },
+    }),
+    prisma.account.update({ where: { id: input.accountId }, data: { lastUsedAt: new Date() } }),
+    prisma.debt.create({
+      data: {
+        id: input.id,
+        userId,
+        direction: input.direction,
+        personName: input.personName,
+        amount: input.amount,
+        note: input.note ?? null,
+        accountId: input.accountId,
+        creationTransferGroupId: input.transferGroupId,
+      },
+    }),
+  ]);
 }
 
 /**
- * Handles inline field edits (personName/amount/note) and settling in one
- * partial update, mirroring updateTransaction's shape.
+ * Handles settling, unsettling, and inline field edits (personName/amount/
+ * note) in one partial update.
  *
- * Settling to true moves real money: it posts a transaction on the chosen
- * account (INCOME for a debt received, EXPENSE for a debt paid) in the same
- * write as the settledAt timestamp. Settling to false only clears the
- * timestamp — reversible by design (product spec §9) for the debt's own
- * status, but it does not reverse the transaction, since the money already
- * moved and silently deleting that history would be its own kind of wrong.
+ * Settling posts a second transfer pair reversing the creation leg — G1
+ * again, against whichever account the money actually moved through this
+ * time (it can differ from the creation account). Unsettling now reverses
+ * that pair precisely (soft-deletes both legs by settleTransferGroupId)
+ * instead of leaving it orphaned, so settle → unsettle → settle can't
+ * double-post. A settled debt's amount is locked — unsettle first — so the
+ * debt row and its posted legs never drift apart; personName/note stay
+ * editable and are pushed onto every leg that carries them.
  */
 export async function updateDebt(userId: string, input: UpdateDebtInput) {
   const existing = await prisma.debt.findUnique({ where: { id: input.id } });
   assertOwned(existing, userId, "debt");
 
-  if (input.settled) {
-    const account = await prisma.account.findUnique({
-      where: { id: input.accountId! },
-    });
-    assertOwned(account, userId, "account");
+  if (input.settled === true) {
+    if (existing!.settledAt) {
+      throw new AppError("PRECONDITION_FAILED", "This debt is already settled.");
+    }
+    await assertAccountOwned(userId, input.accountId!);
+    const debtsAccount = await getOrCreateDebtsAccount(userId);
 
     const magnitude = money(String(input.amount ?? existing!.amount)).abs();
-    const type = existing!.direction === "OWED_TO_ME" ? "INCOME" : "EXPENSE";
-    const amount = type === "EXPENSE" ? -magnitude : magnitude;
+    // Settling reverses the creation leg: OWED_TO_ME settling brings cash
+    // back in; I_OWE settling pays cash back out.
+    const realLegAmount = existing!.direction === "OWED_TO_ME" ? magnitude : magnitude.negated();
+
+    const common = {
+      userId,
+      name: existing!.personName,
+      occurredOn: isoToDbDate(input.occurredOn!),
+      type: "TRANSFER" as const,
+      transferGroupId: input.transferGroupId!,
+      categoryId: null,
+    };
 
     await prisma.$transaction([
       prisma.transaction.create({
         data: {
-          id: input.transactionId!,
-          userId,
-          name: existing!.personName,
-          occurredOn: isoToDbDate(input.occurredOn!),
-          amount: toStorage(amount),
-          type,
+          ...common,
+          id: input.outId!,
           accountId: input.accountId!,
+          amount: toStorage(realLegAmount),
         },
       }),
-      prisma.account.update({
-        where: { id: input.accountId! },
-        data: { lastUsedAt: new Date() },
+      prisma.transaction.create({
+        data: {
+          ...common,
+          id: input.inId!,
+          accountId: debtsAccount.id,
+          amount: toStorage(realLegAmount.negated()),
+        },
       }),
+      prisma.account.update({ where: { id: input.accountId! }, data: { lastUsedAt: new Date() } }),
       prisma.debt.update({
         where: { id: input.id },
         data: {
@@ -879,27 +974,121 @@ export async function updateDebt(userId: string, input: UpdateDebtInput) {
           ...(input.amount !== undefined ? { amount: input.amount } : {}),
           ...(input.note !== undefined ? { note: input.note } : {}),
           settledAt: new Date(),
+          settleAccountId: input.accountId,
+          settleTransferGroupId: input.transferGroupId,
         },
       }),
     ]);
     return;
   }
 
-  await prisma.debt.update({
-    where: { id: input.id },
-    data: {
-      ...(input.personName !== undefined ? { personName: input.personName } : {}),
-      ...(input.amount !== undefined ? { amount: input.amount } : {}),
-      ...(input.note !== undefined ? { note: input.note } : {}),
-      ...(input.settled === false ? { settledAt: null } : {}),
-    },
-  });
+  if (input.settled === false) {
+    await prisma.$transaction([
+      ...(existing!.settleTransferGroupId
+        ? [
+            prisma.transaction.updateMany({
+              where: { userId, transferGroupId: existing!.settleTransferGroupId },
+              data: softDeleted(),
+            }),
+          ]
+        : []),
+      prisma.debt.update({
+        where: { id: input.id },
+        data: {
+          ...(input.personName !== undefined ? { personName: input.personName } : {}),
+          ...(input.note !== undefined ? { note: input.note } : {}),
+          settledAt: null,
+          settleAccountId: null,
+          settleTransferGroupId: null,
+        },
+      }),
+    ]);
+    return;
+  }
+
+  if (input.amount !== undefined && existing!.settledAt) {
+    throw new AppError(
+      "PRECONDITION_FAILED",
+      "A settled debt's amount is locked — unsettle it first.",
+    );
+  }
+
+  const realLegAmount =
+    input.amount !== undefined
+      ? (() => {
+          const magnitude = money(input.amount!).abs();
+          return existing!.direction === "OWED_TO_ME" ? magnitude.negated() : magnitude;
+        })()
+      : null;
+
+  await prisma.$transaction([
+    ...(realLegAmount
+      ? [
+          prisma.transaction.updateMany({
+            where: {
+              userId,
+              transferGroupId: existing!.creationTransferGroupId,
+              accountId: existing!.accountId,
+            },
+            data: { amount: toStorage(realLegAmount) },
+          }),
+          prisma.transaction.updateMany({
+            where: {
+              userId,
+              transferGroupId: existing!.creationTransferGroupId,
+              accountId: { not: existing!.accountId },
+            },
+            data: { amount: toStorage(realLegAmount.negated()) },
+          }),
+        ]
+      : []),
+    ...(input.personName !== undefined
+      ? [
+          prisma.transaction.updateMany({
+            where: { userId, transferGroupId: existing!.creationTransferGroupId },
+            data: { name: input.personName },
+          }),
+          ...(existing!.settleTransferGroupId
+            ? [
+                prisma.transaction.updateMany({
+                  where: { userId, transferGroupId: existing!.settleTransferGroupId },
+                  data: { name: input.personName },
+                }),
+              ]
+            : []),
+        ]
+      : []),
+    prisma.debt.update({
+      where: { id: input.id },
+      data: {
+        ...(input.personName !== undefined ? { personName: input.personName } : {}),
+        ...(input.amount !== undefined ? { amount: input.amount } : {}),
+        ...(input.note !== undefined ? { note: input.note } : {}),
+      },
+    }),
+  ]);
 }
 
+/** Unwinds the creation transfer, and the settlement transfer if settled, so a deleted debt leaves no orphaned transactions. */
 export async function deleteDebt(userId: string, id: string) {
   const existing = await prisma.debt.findUnique({ where: { id } });
   assertOwned(existing, userId, "debt");
-  await prisma.debt.update({ where: { id }, data: softDeleted() });
+
+  await prisma.$transaction([
+    prisma.transaction.updateMany({
+      where: { userId, transferGroupId: existing!.creationTransferGroupId },
+      data: softDeleted(),
+    }),
+    ...(existing!.settleTransferGroupId
+      ? [
+          prisma.transaction.updateMany({
+            where: { userId, transferGroupId: existing!.settleTransferGroupId },
+            data: softDeleted(),
+          }),
+        ]
+      : []),
+    prisma.debt.update({ where: { id }, data: softDeleted() }),
+  ]);
 }
 
 // ---------------------------------------------------------------------------

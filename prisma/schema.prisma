@@ -426,11 +426,17 @@ model Account {
   openingBalance Decimal     @default(0) @db.Decimal(14, 2) @map("opening_balance")
   currency       String      @default("PHP")
   lastUsedAt     DateTime? @map("last_used_at")
+  /// Marks the hidden per-user "Debts" account that backs debt transfers.
+  /// Excluded from listAccounts, so it never appears in a picker, the
+  /// Accounts tab, or Total Balance — see the debt ledger redesign.
+  isSystem       Boolean     @default(false) @map("is_system")
 
   userId String @db.Uuid @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   transactions Transaction[]
+  debts        Debt[]        @relation("DebtAccount")
+  debtSettlements Debt[]     @relation("DebtSettleAccount")
 
   @@index([userId, deletedAt])
   @@map("accounts")
@@ -564,10 +570,27 @@ model Debt {
   /// trivially reversible and records when it happened (product spec §9).
   settledAt  DateTime? @map("settled_at")
 
+  /// The real account the creation leg moved money through. Restrict
+  /// mirrors Transaction.account: never silently orphan the debt's history.
+  accountId String  @db.Uuid @map("account_id")
+  account   Account @relation("DebtAccount", fields: [accountId], references: [id], onDelete: Restrict)
+  /// Links to the two Transaction rows (real account <-> hidden Debts
+  /// account) posted atomically when this debt was created.
+  creationTransferGroupId String @db.Uuid @map("creation_transfer_group_id")
+
+  /// The real account the settlement leg used — can differ from accountId
+  /// (e.g. lent from Cash, repaid into Bank). Null until settled.
+  settleAccountId String?  @db.Uuid @map("settle_account_id")
+  settleAccount   Account? @relation("DebtSettleAccount", fields: [settleAccountId], references: [id], onDelete: Restrict)
+  /// Links to the settlement transfer pair, so unsettle can reverse it
+  /// precisely instead of leaving an orphaned transaction.
+  settleTransferGroupId String? @db.Uuid @map("settle_transfer_group_id")
+
   userId String @db.Uuid @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, deletedAt, settledAt])
+  @@index([accountId])
   @@map("debts")
 }
 

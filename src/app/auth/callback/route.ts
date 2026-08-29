@@ -22,5 +22,9 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.redirect(`${origin}/sign-in`);
+  // Either there was no code (e.g. Supabase's own /verify step already
+  // rejected the link and appended #error=... instead) or the exchange
+  // failed (expired/already-used code). Surface that on sign-in instead of
+  // a bare, unexplained redirect.
+  return NextResponse.redirect(`${origin}/sign-in?error=confirmation_failed`);
 }

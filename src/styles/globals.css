@@ -102,9 +102,12 @@
    * flat 8px-radius boxed input — the border-radius set on `.rounded-input`
    * gets ignored in favour of the platform control's own. Scoped to input/
    * textarea only: native `<select>` elements in this codebase rely on the
-   * browser's own dropdown arrow for their only visual affordance.
+   * browser's own dropdown arrow for their only visual affordance. Checkboxes
+   * and radios are excluded too — `appearance: none` on those strips their
+   * native box entirely, and nothing in this codebase draws a replacement,
+   * so they'd render invisible rather than just unrounded.
    */
-  input,
+  input:not([type="checkbox"]):not([type="radio"]),
   textarea {
     appearance: none;
     -webkit-appearance: none;

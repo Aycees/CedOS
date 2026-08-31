@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { Button } from "./button";
 import { Modal, ModalActions } from "./modal";
+import { Select, SelectItem } from "./select";
 
 /**
  * The shared "you are about to delete a thing other things point at" dialog.
@@ -117,17 +118,13 @@ export function ImpactPreviewDialog({
       {reassignTargets.length > 0 && (
         <label className="mt-4 flex flex-col gap-1.5">
           <span className="kicker">{reassignLabel}</span>
-          <select
-            value={target}
-            onChange={(event) => setTarget(event.target.value)}
-            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
-          >
+          <Select value={target} onValueChange={setTarget}>
             {reassignTargets.map((option) => (
-              <option key={option.id} value={option.id}>
+              <SelectItem key={option.id} value={option.id}>
                 {option.label}
-              </option>
+              </SelectItem>
             ))}
-          </select>
+          </Select>
         </label>
       )}
 

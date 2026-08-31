@@ -15,6 +15,7 @@ import { cn } from "@/core/ui/cn";
 import { Input } from "@/core/ui/input";
 import { Modal, ModalActions } from "@/core/ui/modal";
 import { EmptyState, PageHeader } from "@/core/ui/page-header";
+import { Select, SelectItem } from "@/core/ui/select";
 
 import {
   KIND_LABELS,
@@ -1310,17 +1311,13 @@ function AddDebtForm({
       {hasAccount && (
         <label className="flex flex-col gap-1.5">
           <span className="kicker">Which account?</span>
-          <select
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
-          >
+          <Select value={accountId} onValueChange={setAccountId}>
             {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
+              <SelectItem key={account.id} value={account.id}>
                 {account.name}
-              </option>
+              </SelectItem>
             ))}
-          </select>
+          </Select>
         </label>
       )}
       <Button className="w-full" onClick={submit} disabled={!canAdd}>
@@ -1375,17 +1372,13 @@ function SettleDebtModal({
           <span className="kicker">
             {received ? "Which account did it go to?" : "Which account did it come from?"}
           </span>
-          <select
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
-          >
+          <Select value={accountId} onValueChange={setAccountId}>
             {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
+              <SelectItem key={account.id} value={account.id}>
                 {account.name}
-              </option>
+              </SelectItem>
             ))}
-          </select>
+          </Select>
         </label>
       </div>
 

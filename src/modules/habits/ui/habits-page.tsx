@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { formatWeekdayName } from "@/core/date";
 import { newId } from "@/core/ids";
@@ -213,6 +213,7 @@ function HabitRow({
   onEdit: (habit: HabitTodayView) => void;
 }) {
   const queryClient = useQueryClient();
+  const queryKey = ["habits", "today", today];
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["habits"] });
 
   const log = useMutation({
@@ -223,13 +224,60 @@ function HabitRow({
         logDate: today,
         ...vars,
       }),
-    onSuccess: invalidate,
   });
 
   const clear = useMutation({
     mutationFn: () => api.delete("/api/habits/logs", { habitId: habit.id, logDate: today }),
     onSuccess: invalidate,
   });
+
+  // Counter clicks update the cache instantly and coalesce the network write:
+  // logHabit upserts by (habitId, logDate), so only the value after the last
+  // click in a burst needs to reach the server.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fireIdRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
+  const bumpCount = (delta: number) => {
+    // Compute the new value from the live cache inside the updater, not from
+    // the `habit` render closure - rapid clicks can fire faster than React
+    // re-renders, so reading habit.value here would make every click in a
+    // burst compute off the same stale number instead of accumulating.
+    let nextValue = 0;
+    queryClient.setQueryData<HabitTodayView[]>(queryKey, (old) =>
+      old?.map((h) => {
+        if (h.id !== habit.id) return h;
+        nextValue = Math.max(0, (h.value ?? 0) + delta);
+        return {
+          ...h,
+          value: nextValue,
+          status: "LOGGED",
+          progress: h.targetValue ? nextValue / h.targetValue : 0,
+        };
+      }),
+    );
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      const myId = ++fireIdRef.current;
+      log.mutate(
+        { status: "LOGGED", value: nextValue },
+        {
+          onSettled: (_data, error) => {
+            // Only the most recently fired request may reconcile the cache -
+            // an older, slower response settling later must not clobber a
+            // newer optimistic value with stale server state.
+            if (error || myId === fireIdRef.current) invalidate();
+          },
+        },
+      );
+    }, 400);
+  };
 
   const done = habit.progress >= 1;
   const skipped = habit.status === "SKIPPED";
@@ -246,10 +294,13 @@ function HabitRow({
         onClick={() =>
           done || skipped
             ? clear.mutate()
-            : log.mutate({
-                status: "LOGGED",
-                value: habit.completionType === "BINARY" ? null : habit.targetValue,
-              })
+            : log.mutate(
+                {
+                  status: "LOGGED",
+                  value: habit.completionType === "BINARY" ? null : habit.targetValue,
+                },
+                { onSettled: invalidate },
+              )
         }
         className={cn(
           "grid size-6 flex-none place-items-center rounded-input border-[1.5px] font-mono text-[12px] leading-none text-on-dark",
@@ -289,9 +340,7 @@ function HabitRow({
           <button
             type="button"
             aria-label={`Decrease ${habit.name}`}
-            onClick={() =>
-              log.mutate({ status: "LOGGED", value: Math.max(0, (habit.value ?? 0) - 1) })
-            }
+            onClick={() => bumpCount(-1)}
             className="size-6 flex-none rounded-[7px] border border-border font-mono text-[13px] text-text"
           >
             −
@@ -302,7 +351,7 @@ function HabitRow({
           <button
             type="button"
             aria-label={`Increase ${habit.name}`}
-            onClick={() => log.mutate({ status: "LOGGED", value: (habit.value ?? 0) + 1 })}
+            onClick={() => bumpCount(1)}
             className="size-6 flex-none rounded-[7px] border border-border font-mono text-[13px] text-text"
           >
             +
@@ -324,7 +373,11 @@ function HabitRow({
       {!done && (
         <button
           type="button"
-          onClick={() => (skipped ? clear.mutate() : log.mutate({ status: "SKIPPED", value: null }))}
+          onClick={() =>
+            skipped
+              ? clear.mutate()
+              : log.mutate({ status: "SKIPPED", value: null }, { onSettled: invalidate })
+          }
           aria-label={skipped ? `Unskip ${habit.name}` : `Skip ${habit.name}`}
           className="flex-none font-mono text-[10.5px] tracking-[0.03em]"
           style={{ color: skipped ? accent : "var(--muted)" }}

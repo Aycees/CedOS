@@ -14,6 +14,7 @@ import { ImpactPreviewDialog } from "@/core/ui/impact-preview-dialog";
 import { Input } from "@/core/ui/input";
 import { Modal, ModalActions } from "@/core/ui/modal";
 import { Segmented } from "@/core/ui/segmented";
+import { Select, SelectItem } from "@/core/ui/select";
 import { CATEGORY_COLORS } from "@/modules/calendar/schema";
 
 import {
@@ -26,6 +27,10 @@ import {
   type CategoryView,
   type TransactionView,
 } from "../schema";
+
+// Radix Select forbids an empty item value, so these stand in for "no selection".
+const UNCATEGORISED = "__uncategorised__";
+const NO_GROUP = "__no-group__";
 
 const invalidateFinance = (queryClient: ReturnType<typeof useQueryClient>) =>
   queryClient.invalidateQueries({ queryKey: ["finance"] });
@@ -447,53 +452,46 @@ export function TransactionModal({
 
         <label className="flex flex-col gap-1.5">
           <span className="kicker">{mode === "TRANSFER" ? "From" : "Account"}</span>
-          <select
+          <Select
             value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
+            onValueChange={setAccountId}
             disabled={isTransferRow}
             aria-label={mode === "TRANSFER" ? "Transfer from" : "Account"}
-            className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
           >
             {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
+              <SelectItem key={account.id} value={account.id}>
                 {account.name}
-              </option>
+              </SelectItem>
             ))}
-          </select>
+          </Select>
         </label>
 
         {mode === "TRANSFER" ? (
           <label className="flex flex-col gap-1.5">
             <span className="kicker">To</span>
-            <select
-              value={toAccountId}
-              onChange={(e) => setToAccountId(e.target.value)}
-              aria-label="Transfer to"
-              className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
-            >
+            <Select value={toAccountId} onValueChange={setToAccountId} aria-label="Transfer to">
               {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
+                <SelectItem key={account.id} value={account.id}>
                   {account.name}
-                </option>
+                </SelectItem>
               ))}
-            </select>
+            </Select>
           </label>
         ) : (
           <label className="flex flex-col gap-1.5">
             <span className="kicker">Category</span>
-            <select
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
+            <Select
+              value={categoryId || UNCATEGORISED}
+              onValueChange={(next) => setCategoryId(next === UNCATEGORISED ? "" : next)}
               disabled={isTransferRow}
-              className="w-full rounded-input border border-border bg-transparent px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
             >
-              <option value="">uncategorised</option>
+              <SelectItem value={UNCATEGORISED}>uncategorised</SelectItem>
               {categories.map((category) => (
-                <option key={category.id} value={category.id}>
+                <SelectItem key={category.id} value={category.id}>
                   {categoryLabel(category, groupLabels)}
-                </option>
+                </SelectItem>
               ))}
-            </select>
+            </Select>
           </label>
         )}
 
@@ -723,18 +721,18 @@ export function BudgetModal({
 
         <label className="flex flex-col gap-1.5">
           <span className="kicker">Group · optional</span>
-          <select
-            value={groupId}
-            onChange={(e) => setGroupId(e.target.value)}
-            className="w-full rounded-input border-none bg-text/5 px-2.75 py-2 font-mono text-[12.5px] text-text outline-none"
+          <Select
+            variant="tinted"
+            value={groupId || NO_GROUP}
+            onValueChange={(next) => setGroupId(next === NO_GROUP ? "" : next)}
           >
-            <option value="">No group</option>
+            <SelectItem value={NO_GROUP}>No group</SelectItem>
             {groups.map((group) => (
-              <option key={group.id} value={group.id}>
+              <SelectItem key={group.id} value={group.id}>
                 {group.name}
-              </option>
+              </SelectItem>
             ))}
-          </select>
+          </Select>
         </label>
 
         {error && <p className="m-0 font-mono text-[11.5px] text-accent-red">{error}</p>}

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 /**
  * Product spec §5 — Tasks. One test per edge case the spec lists.
@@ -68,6 +68,43 @@ test("completing and reopening a task is reversible", async ({ page }) => {
     "line-through",
   );
 });
+
+test("the bucket counter tracks completed tasks, not remaining ones", async ({
+  page,
+}) => {
+  // Regression: the counter used to be `total - done` under a "done/total"
+  // label, so completing every task walked it down to 0 instead of up to
+  // the total — the opposite of what "done" should read.
+  const title = unique("Renew passport");
+  const input = page.getByLabel("Add a task to today");
+  await input.fill(title);
+  await input.press("Enter");
+
+  // Wait for the row itself before reading the baseline count, so the
+  // snapshot below is never taken mid-add (the count moving out from under
+  // its own baseline would be a false failure, not a real one).
+  const checkbox = page.getByRole("checkbox", { name: `Complete ${title}` });
+  await expect(checkbox).toBeVisible();
+
+  const todaySection = page.locator("section", {
+    has: page.getByRole("heading", { name: "Today" }),
+  });
+  const counter = todaySection.getByText(/^\d+\/\d+$/);
+  const before = await readCount(counter);
+
+  await checkbox.click();
+  await expect(async () => {
+    expect(await readCount(counter)).toEqual({
+      done: before.done + 1,
+      total: before.total,
+    });
+  }).toPass();
+});
+
+async function readCount(counter: Locator): Promise<{ done: number; total: number }> {
+  const [done, total] = (await counter.textContent())?.split("/").map(Number) ?? [];
+  return { done: done ?? Number.NaN, total: total ?? Number.NaN };
+}
 
 test("removing a task takes it out of the list", async ({ page }) => {
   const title = unique("Book dentist");

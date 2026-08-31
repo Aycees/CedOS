@@ -33,9 +33,44 @@ function TaskSection({ bucket }: { bucket: BucketView }) {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: TASKS_KEY });
 
   const create = useMutation({
-    mutationFn: (title: string) =>
-      api.post("/api/tasks", { id: newId(), title, bucket: bucket.bucket }),
-    onSuccess: invalidate,
+    mutationFn: (input: { id: string; title: string }) =>
+      api.post("/api/tasks", { id: input.id, title: input.title, bucket: bucket.bucket }),
+    // Optimistic add: the id is already client-generated (core/ids.ts is
+    // explicit that this is exactly why), so the new task, its bucket's
+    // count, and the "nothing here yet" empty state can all update the
+    // instant the user hits enter instead of waiting on the round-trip.
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: TASKS_KEY });
+      const previous = queryClient.getQueryData<BucketView[]>(TASKS_KEY);
+
+      queryClient.setQueryData<BucketView[]>(TASKS_KEY, (old) =>
+        old?.map((b) =>
+          b.bucket === bucket.bucket
+            ? {
+                ...b,
+                total: b.total + 1,
+                tasks: [
+                  ...b.tasks,
+                  {
+                    id: input.id,
+                    title: input.title,
+                    bucket: b.bucket,
+                    completedAt: null,
+                    collapsed: false,
+                    sortOrder: Infinity,
+                  },
+                ],
+              }
+            : b,
+        ),
+      );
+
+      return { previous };
+    },
+    onError: (_err, _input, context) => {
+      if (context?.previous) queryClient.setQueryData(TASKS_KEY, context.previous);
+    },
+    onSettled: invalidate,
   });
 
   const toggle = useMutation({
@@ -59,7 +94,6 @@ function TaskSection({ bucket }: { bucket: BucketView }) {
   // toggle once they are more than 7 days old. Nothing is ever auto-deleted.
   const visible = bucket.tasks.filter((task) => !task.collapsed);
   const collapsed = bucket.tasks.filter((task) => task.collapsed);
-  const open = bucket.total - bucket.done;
 
   return (
     <section className="mb-8.5">
@@ -69,7 +103,7 @@ function TaskSection({ bucket }: { bucket: BucketView }) {
         </h2>
         <div className="h-px flex-1 bg-border" />
         <span className="font-mono text-[10.5px] text-muted">
-          {open}/{bucket.total}
+          {bucket.done}/{bucket.total}
         </span>
       </div>
 
@@ -111,7 +145,7 @@ function TaskSection({ bucket }: { bucket: BucketView }) {
       */}
       <AddTaskInput
         bucket={bucket.bucket}
-        onAdd={(title) => create.mutate(title)}
+        onAdd={(title) => create.mutate({ id: newId(), title })}
         empty={bucket.total === 0}
       />
     </section>

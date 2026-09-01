@@ -111,9 +111,7 @@ function TodayView({
           label="Best streak"
           value={String(bestStreak)}
           unit={
-            bestHabit
-              ? `${bestHabit.cadenceType === "TIMES_PER_WEEK" ? "wks" : "days"} · ${bestHabit.name.toLowerCase()}`
-              : "no streak yet"
+            bestHabit ? `days · ${bestHabit.name.toLowerCase()}` : "no streak yet"
           }
           progress={Math.min(1, bestStreak / 30)}
           color={bestHabit ? `var(--accent-${bestHabit.color})` : "var(--accent-default)"}
@@ -282,7 +280,6 @@ function HabitRow({
   const done = habit.progress >= 1;
   const skipped = habit.status === "SKIPPED";
   const accent = `var(--accent-${habit.color})`;
-  const weekly = habit.cadenceType === "TIMES_PER_WEEK";
 
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg px-2 py-2.75">
@@ -367,7 +364,7 @@ function HabitRow({
             habit.currentStreak > 0 ? `color-mix(in srgb, ${accent} 10%, transparent)` : "transparent",
         }}
       >
-        {habit.currentStreak > 0 ? `${habit.currentStreak}${weekly ? "w" : "d"}` : "—"}
+        {habit.currentStreak > 0 ? `${habit.currentStreak}d` : "—"}
       </span>
 
       {!done && (

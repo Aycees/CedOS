@@ -119,6 +119,17 @@
     outline: none;
   }
 
+  /*
+   * :focus-visible rather than :focus keeps the ring off mouse clicks, so
+   * it's free for pointer users. Uses the accent token so it reads in both
+   * themes.
+   */
+  :focus-visible {
+    outline: 2px solid var(--accent-default);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
   input[type="number"]::-webkit-inner-spin-button,
   input[type="number"]::-webkit-outer-spin-button {
     appearance: none;

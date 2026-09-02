@@ -4,10 +4,6 @@
  * Grouped by intent, not by app type — and §14 says the platform grows by
  * adding an app to an existing group. Adding app #12 is one entry here plus
  * one folder under src/modules.
- *
- * `built: false` renders the entry with a calm "not built yet" page rather
- * than a 404, so the shape of the finished platform stays visible while
- * phases 3–10 land.
  */
 
 export type NavItem = {
@@ -15,7 +11,6 @@ export type NavItem = {
   href: string;
   /** Which count, if any, the sidebar badge shows. */
   badge?: "todayEvents" | "openTasks" | "habitsDue";
-  built: boolean;
 };
 
 export type NavGroup = {
@@ -27,33 +22,33 @@ export type NavGroup = {
 export const NAV: NavGroup[] = [
   {
     label: null,
-    items: [{ label: "Home", href: "/", badge: "todayEvents", built: true }],
+    items: [{ label: "Home", href: "/", badge: "todayEvents" }],
   },
   {
     label: "Plan",
     items: [
-      { label: "Calendar", href: "/calendar", built: false },
-      { label: "Tasks", href: "/tasks", badge: "openTasks", built: true },
+      { label: "Calendar", href: "/calendar" },
+      { label: "Tasks", href: "/tasks", badge: "openTasks" },
     ],
   },
   {
     label: "Capture",
     items: [
-      { label: "Notes", href: "/notes", built: false },
-      { label: "Journal", href: "/journal", built: true },
+      { label: "Notes", href: "/notes" },
+      { label: "Journal", href: "/journal" },
     ],
   },
   {
     label: "Track",
     items: [
-      { label: "Habits", href: "/habits", badge: "habitsDue", built: false },
-      { label: "Finance", href: "/finance", built: false },
-      { label: "Itinerary", href: "/itinerary", built: false },
+      { label: "Habits", href: "/habits", badge: "habitsDue" },
+      { label: "Finance", href: "/finance" },
+      { label: "Itinerary", href: "/itinerary" },
     ],
   },
   {
     label: "Secure",
-    items: [{ label: "Vault", href: "/vault", built: true }],
+    items: [{ label: "Vault", href: "/vault" }],
   },
 ];
 

@@ -1,6 +1,5 @@
 import { requireSession } from "@/core/auth/session";
 import { todayIso } from "@/core/date";
-import { PageHeader } from "@/core/ui/page-header";
 import { listToday } from "@/modules/habits/service";
 import { HabitsPage } from "@/modules/habits/ui/habits-page";
 import { getSettings } from "@/modules/settings/service";
@@ -12,11 +11,8 @@ export default async function Habits() {
   const habits = await listToday(session.userId, today, settings.weekStartsOn);
 
   return (
-    <>
-      <PageHeader kicker="Track" title="Habits" />
-      <div className="flex-1 overflow-auto">
-        <HabitsPage initialToday={habits} today={today} />
-      </div>
-    </>
+    <div className="flex-1 overflow-auto">
+      <HabitsPage initialToday={habits} today={today} />
+    </div>
   );
 }
